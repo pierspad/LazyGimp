@@ -1,3 +1,9 @@
+## [1.0.1](https://github.com/pierspad/LazyGimp/compare/v1.0.0...v1.0.1) (2026-07-02)
+
+### 🐛 Bug Fixes
+
+* dai ([b1c5272](https://github.com/pierspad/LazyGimp/commit/b1c5272c6684efd8ebd0e2e40f2b18097a87e76d))
+
 ## 1.0.0 (2026-07-02)
 
 ### ✨ Features
