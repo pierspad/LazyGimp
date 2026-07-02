@@ -59,6 +59,34 @@ gimp::newest_config_dir() { # <base-dir>
   printf '%s/%s\n' "$base" "$best"
 }
 
+# Launch GIMP once, headless, so it generates its per-user configuration
+# files (config dir, plug-in folders, rc files). On a fresh system this MUST
+# happen before the PhotoGIMP layer and plug-ins are applied, otherwise
+# there is no directory to target. Quick (a few seconds) and idempotent.
+gimp::warm_up() { # <kind> [explicit-gimp-binary]
+  local kind="$1" bin="${2:-}" cmd=()
+  case "$kind" in
+    native)
+      if [[ -n "$bin" ]]; then
+        cmd=("$bin")
+      elif have gimp; then
+        cmd=(gimp)
+      else
+        return 0
+      fi
+      ;;
+    flatpak)
+      have flatpak || return 0
+      cmd=(flatpak run "${GIMP_FLATPAK_ID}")
+      ;;
+    *) return 0 ;;
+  esac
+  log::info "launching GIMP once (headless) to generate its configuration files..."
+  if ! timeout 180 "${cmd[@]}" -i -b '(gimp-quit 0)' >/dev/null 2>&1; then
+    log::warn "headless GIMP warm-up did not complete; continuing anyway"
+  fi
+}
+
 # Resolve THE config directory a configuration layer must target.
 #
 # Strategy, in order:

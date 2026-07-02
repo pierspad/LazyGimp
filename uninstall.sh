@@ -16,9 +16,28 @@
 #   ./uninstall.sh --all --yes          remove everything detected, no prompt
 #   ./uninstall.sh --purge              also delete backups and state dir
 # ---------------------------------------------------------------------------
+
+# Tolerate being launched with `sh script.sh` (dash, or bash in POSIX mode,
+# which rejects function names containing '::'): re-exec under real bash.
+if [ -f "${0:-}" ]; then
+  if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
+  if shopt -qo posix 2>/dev/null; then exec bash "$0" "$@"; fi
+fi
+
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+LAZYGIMP_REPO_SLUG="${LAZYGIMP_REPO_SLUG:-pierspad/LazyGimp}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd)"
+
+# Standalone download or `curl | bash`: fetch the release bundle and re-exec.
+if [[ ! -d "${SCRIPT_DIR}/lib" ]]; then
+  bootstrap_dir="$(mktemp -d "${TMPDIR:-/tmp}/lazygimp-bootstrap.XXXXXX")"
+  trap 'rm -rf "$bootstrap_dir"' EXIT
+  echo "[info] fetching the latest LazyGimp bundle..." >&2
+  curl -fsSL "https://github.com/${LAZYGIMP_REPO_SLUG}/releases/latest/download/lazygimp.tar.gz" |
+    tar -xz -C "$bootstrap_dir"
+  exec bash "${bootstrap_dir}/lazygimp/uninstall.sh" "$@"
+fi
 # shellcheck source=lib/photogimp.sh
 source "${SCRIPT_DIR}/lib/photogimp.sh"
 # shellcheck source=lib/segany_backend.sh
@@ -72,7 +91,7 @@ detected_plugins() {
 
 # -------------------------------- removal ---------------------------------
 
-# Revert font-access overrides exactly as recorded by install_with_flatpak.sh.
+# Revert font-access overrides exactly as recorded by flatpak-install.sh.
 revert_font_overrides() {
   local state="${LAZYGIMP_STATE_DIR}/flatpak-font-overrides" fs
   [[ -f "$state" ]] || return 0

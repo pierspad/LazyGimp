@@ -2,7 +2,7 @@
 # ---------------------------------------------------------------------------
 # shell_scripts/debian.sh — Debian (13 "trixie" and later recommended).
 #
-# Sourced by install_with_package_manager.sh. Contract: define
+# Sourced by package-manager-install.sh. Contract: define
 # lazygimp::install_packages (required) and lazygimp::post_install_notes
 # (optional). Distro-specific knowledge stays confined to this file.
 # ---------------------------------------------------------------------------
@@ -38,6 +38,6 @@ lazygimp::post_install_notes() {
   candidate="$(apt-cache policy gimp 2>/dev/null | sed -n 's/^ *Candidate: *//p')"
   if [[ "$candidate" == 2.* ]]; then
     log::warn "this release ships GIMP ${candidate}, but PhotoGIMP requires GIMP 3+"
-    log::warn "use './install_with_flatpak.sh' to get current GIMP with automatic updates"
+    log::warn "use './flatpak-install.sh' to get current GIMP with automatic updates"
   fi
 }

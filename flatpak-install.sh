@@ -1,37 +1,61 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# install_with_flatpak.sh — install GIMP + G'MIC from Flathub, then apply
-# the PhotoGIMP layer to the flatpak's sandboxed config directory.
+# flatpak-install.sh — GIMP + G'MIC + Resynthesizer from Flathub, then
+# everything else: headless first launch, PhotoGIMP layer, Batcher,
+# Segment Anything. Fully unattended: no questions asked.
 #
 # Best choice on distributions whose repositories lag behind upstream
 # (Debian stable, Ubuntu LTS): Flathub ships current GIMP everywhere and
 # updates flow through the system's flatpak updater.
 #
 # Usage:
-#   ./install_with_flatpak.sh [--skip-photogimp] [--uninstall-photogimp]
+#   ./flatpak-install.sh [--skip-photogimp] [--skip-plugins] [--no-sam] [--no-font-access]
+#
+# Piped usage (no checkout needed):
+#   curl -fsSL https://raw.githubusercontent.com/pierspad/LazyGimp/main/flatpak-install.sh | bash
 # ---------------------------------------------------------------------------
+
+# Tolerate being launched with `sh script.sh` (dash, or bash in POSIX mode,
+# which rejects function names containing '::'): re-exec under real bash.
+if [ -f "${0:-}" ]; then
+  if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
+  if shopt -qo posix 2>/dev/null; then exec bash "$0" "$@"; fi
+fi
+
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+LAZYGIMP_REPO_SLUG="${LAZYGIMP_REPO_SLUG:-pierspad/LazyGimp}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd)"
+
+# Standalone download or `curl | bash`: fetch the release bundle and re-exec.
+if [[ ! -d "${SCRIPT_DIR}/lib" ]]; then
+  bootstrap_dir="$(mktemp -d "${TMPDIR:-/tmp}/lazygimp-bootstrap.XXXXXX")"
+  trap 'rm -rf "$bootstrap_dir"' EXIT
+  echo "[info] fetching the latest LazyGimp bundle..." >&2
+  curl -fsSL "https://github.com/${LAZYGIMP_REPO_SLUG}/releases/latest/download/lazygimp.tar.gz" |
+    tar -xz -C "$bootstrap_dir"
+  exec bash "${bootstrap_dir}/lazygimp/flatpak-install.sh" "$@"
+fi
+
 # shellcheck source=lib/photogimp.sh
 source "${SCRIPT_DIR}/lib/photogimp.sh"
 
 usage() {
   cat <<EOF
-LazyGimp — Flatpak installer (Flathub)
+LazyGimp — Flatpak installer (Flathub, fully unattended)
 
 Usage: ${0##*/} [options]
 
 Options:
   --skip-photogimp        do not apply the PhotoGIMP configuration layer
-  --skip-plugins          do not install the optional plug-ins (Batcher, SAM)
+  --skip-plugins          do not install the plug-ins (Batcher, SAM)
   --no-sam                install Batcher but skip Segment Anything (~1 GB)
   --no-font-access        do not apply the font sandbox override (see note)
   --uninstall-photogimp   remove the PhotoGIMP layer (personal files are kept)
   -h, --help              show this help
 
-By default EVERYTHING is set up: GIMP + G'MIC + PhotoGIMP + Batcher +
-Segment Anything with its automated Python backend.
+By default EVERYTHING is set up, no questions asked: GIMP + G'MIC +
+Resynthesizer + PhotoGIMP + Batcher + Segment Anything (automated backend).
 
 Note on fonts:
   Recent flatpak already exposes system AND user fonts to GIMP. To make
@@ -84,7 +108,7 @@ done
 main() {
   have flatpak ||
     die "flatpak is not installed — install it from your package manager first \
-(e.g. 'sudo apt install flatpak'), or use ./install_with_package_manager.sh"
+(e.g. 'sudo apt install flatpak'), or use ./package-manager-install.sh"
 
   if ! flatpak remotes --columns=name 2>/dev/null | grep -qx flathub; then
     log::info "adding the flathub remote (user scope)"
@@ -105,6 +129,9 @@ main() {
     fi
   done
 
+  # GIMP must run once to generate its config tree before we layer on it.
+  gimp::warm_up flatpak
+
   if [[ "$SKIP_PHOTOGIMP" != 1 ]]; then
     if ! (photogimp::install flatpak); then
       log::warn "PhotoGIMP layer not applied (see message above); GIMP itself is installed"
@@ -122,8 +149,8 @@ main() {
     if [[ "$NO_SAM" != 1 ]]; then
       plugin_args+=(--segment-anything)
     fi
-    if ! "${SCRIPT_DIR}/install_plugins.sh" "${plugin_args[@]}"; then
-      log::warn "plug-ins step failed — re-run it later with: ./install_plugins.sh"
+    if ! "${SCRIPT_DIR}/plugins-install.sh" "${plugin_args[@]}"; then
+      log::warn "plug-ins step failed — re-run it later with: ./plugins-install.sh"
     fi
   fi
 

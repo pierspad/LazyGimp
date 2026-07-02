@@ -1,29 +1,48 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# install_plugins.sh — optional GIMP 3 plug-ins, on top of any LazyGimp
-# installation (native packages, flatpak or AppImage):
+# plugins-install.sh — GIMP 3 plug-ins, on top of any LazyGimp installation
+# (native packages, flatpak or AppImage):
 #
 #   batcher            batch processing / export layers  (BSD-3-Clause)
-#   segment-anything   AI subject selection via Meta SAM (AGPL-3.0) —
-#                      EXPERIMENTAL: needs a separate Python backend
-#                      (PyTorch + model checkpoints, several GB)
+#   segment-anything   AI subject selection via Meta SAM (AGPL-3.0),
+#                      including a fully automated Python backend
 #
 # Usage:
-#   ./install_plugins.sh                     interactive menu
-#   ./install_plugins.sh --batcher           install Batcher
-#   ./install_plugins.sh --segment-anything  install Segment Anything
-#   ./install_plugins.sh --uninstall-all     remove every plug-in we installed
-#   ./install_plugins.sh --kind flatpak ...  target the flatpak GIMP explicitly
+#   ./plugins-install.sh                     both, ready to use (default)
+#   ./plugins-install.sh --batcher           install Batcher only
+#   ./plugins-install.sh --segment-anything  install Segment Anything only
+#   ./plugins-install.sh --uninstall-all     remove everything we installed
+#   ./plugins-install.sh --kind flatpak ...  target the flatpak GIMP explicitly
 # ---------------------------------------------------------------------------
+
+# Tolerate being launched with `sh script.sh` (dash, or bash in POSIX mode,
+# which rejects function names containing '::'): re-exec under real bash.
+if [ -f "${0:-}" ]; then
+  if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
+  if shopt -qo posix 2>/dev/null; then exec bash "$0" "$@"; fi
+fi
+
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+LAZYGIMP_REPO_SLUG="${LAZYGIMP_REPO_SLUG:-pierspad/LazyGimp}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd)"
+
+# Standalone download or `curl | bash`: fetch the release bundle and re-exec.
+if [[ ! -d "${SCRIPT_DIR}/lib" ]]; then
+  bootstrap_dir="$(mktemp -d "${TMPDIR:-/tmp}/lazygimp-bootstrap.XXXXXX")"
+  trap 'rm -rf "$bootstrap_dir"' EXIT
+  echo "[info] fetching the latest LazyGimp bundle..." >&2
+  curl -fsSL "https://github.com/${LAZYGIMP_REPO_SLUG}/releases/latest/download/lazygimp.tar.gz" |
+    tar -xz -C "$bootstrap_dir"
+  exec bash "${bootstrap_dir}/lazygimp/plugins-install.sh" "$@"
+fi
+
 # shellcheck source=lib/segany_backend.sh
 source "${SCRIPT_DIR}/lib/segany_backend.sh"
 
 usage() {
   cat <<EOF
-LazyGimp — optional plug-ins installer
+LazyGimp — plug-ins installer
 
 Usage: ${0##*/} [options]
 
@@ -33,14 +52,14 @@ Options:
                        (PyTorch CPU + SAM checkpoint, ~1 GB download) — the
                        result is fully working out of the box
   --no-sam-backend     with --segment-anything: install the plug-in only,
-                       manage the Python backend yourself
+                       e.g. if you already manage your own PyTorch/SAM setup
   --kind <k>           target GIMP install kind: native | flatpak
                        (default: auto-detected)
   --uninstall-all      remove every plug-in installed by LazyGimp
                        (and the SAM backend, if present)
   -h, --help           show this help
 
-Run without options for an interactive menu.
+Without options BOTH plug-ins are installed, ready to use.
 GPU acceleration: LAZYGIMP_TORCH_INDEX_URL=<torch wheel index> (default: CPU wheels).
 EOF
 }
@@ -59,37 +78,6 @@ detect_kind() {
   else
     return 1
   fi
-}
-
-choose_interactively() {
-  local tty=/dev/tty choice
-  [[ -r "$tty" && -w "$tty" ]] || return 1
-  {
-    printf '\nLazyGimp — optional plug-ins\n\n'
-    printf '  1) both               everything, ready to use (default)\n'
-    printf '  2) batcher            batch processing / export layers\n'
-    printf '  3) segment-anything   AI subject selection, incl. automated\n'
-    printf '                        PyTorch/SAM backend (~1 GB download)\n'
-    printf '  q) quit\n\n'
-  } >"$tty"
-  while true; do
-    printf 'Choice [1]: ' >"$tty"
-    read -r choice <"$tty" || return 1
-    case "$choice" in
-      '' | 1)
-        WANT_BATCHER=1
-        WANT_SEGANY=1
-        ;;
-      2) WANT_BATCHER=1 ;;
-      3) WANT_SEGANY=1 ;;
-      q | quit) exit 0 ;;
-      *)
-        printf 'invalid choice: %s\n' "$choice" >"$tty"
-        continue
-        ;;
-    esac
-    return 0
-  done
 }
 
 KIND=""
@@ -121,9 +109,10 @@ while (($#)); do
 done
 
 main() {
+  # No selection → everything, ready to use. Lazy by default.
   if ((!WANT_BATCHER && !WANT_SEGANY)); then
-    choose_interactively ||
-      die "no terminal for the interactive menu — pass --batcher and/or --segment-anything"
+    WANT_BATCHER=1
+    WANT_SEGANY=1
   fi
 
   if [[ -z "$KIND" ]]; then

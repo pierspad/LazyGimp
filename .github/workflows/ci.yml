@@ -35,6 +35,14 @@ jobs:
           find . -name '*.sh' -not -path './node_modules/*' -print0 |
             xargs -0 shellcheck --external-sources --source-path=. --severity=style
 
+      - name: Entry scripts survive `sh script.sh` (POSIX-mode guard)
+        run: |
+          for s in install.sh package-manager-install.sh flatpak-install.sh \
+                   appimage-install.sh plugins-install.sh uninstall.sh; do
+            sh "$s" --help >/dev/null
+            bash --posix "$s" --help >/dev/null
+          done
+
   tests:
     name: Unit tests (bats)
     runs-on: ubuntu-latest

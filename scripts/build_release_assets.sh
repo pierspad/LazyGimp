@@ -6,7 +6,7 @@
 #   lazygimp.tar.gz             installer bundle, stable URL used by the
 #                               `curl | bash` bootstrap ("latest" alias)
 #   lazygimp-<version>.tar.gz   the same bundle, versioned
-#   install-lazygimp.ps1        Windows installer script
+#   windows-install.ps1        Windows installer script
 #   checksums.txt               SHA-256 of every asset
 #
 # Invoked by semantic-release (@semantic-release/exec, see .releaserc).
@@ -41,10 +41,10 @@ copy_first() { # <dest-name> <candidate>...
 # Everything the installer needs at runtime.
 cp -a \
   "${ROOT}/install.sh" \
-  "${ROOT}/install_with_package_manager.sh" \
-  "${ROOT}/install_with_flatpak.sh" \
-  "${ROOT}/install_with_appimage.sh" \
-  "${ROOT}/install_plugins.sh" \
+  "${ROOT}/package-manager-install.sh" \
+  "${ROOT}/flatpak-install.sh" \
+  "${ROOT}/appimage-install.sh" \
+  "${ROOT}/plugins-install.sh" \
   "${ROOT}/uninstall.sh" \
   "${ROOT}/lib" \
   "${ROOT}/shell_scripts" \
@@ -61,7 +61,18 @@ sed -i "s/^LAZYGIMP_VERSION=.*/LAZYGIMP_VERSION=\"${VERSION}\"/" \
 
 tar -czf "${DIST}/lazygimp.tar.gz" -C "$STAGE" lazygimp
 cp "${DIST}/lazygimp.tar.gz" "${DIST}/lazygimp-${VERSION}.tar.gz"
-cp "${ROOT}/windows/install-lazygimp.ps1" "${DIST}/"
+cp "${ROOT}/windows/windows-install.ps1" "${DIST}/"
+
+# Every entry script is also a standalone asset: each self-bootstraps by
+# downloading the bundle above when its lib/ is not next to it.
+cp "${BUNDLE}/install.sh" "${DIST}/" # version-stamped copy
+cp -a \
+  "${ROOT}/package-manager-install.sh" \
+  "${ROOT}/flatpak-install.sh" \
+  "${ROOT}/appimage-install.sh" \
+  "${ROOT}/plugins-install.sh" \
+  "${ROOT}/uninstall.sh" \
+  "${DIST}/"
 
 (cd "$DIST" && sha256sum -- * >checksums.txt)
 

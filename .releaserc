@@ -53,10 +53,16 @@
       "@semantic-release/github",
       {
         "assets": [
-          { "path": "dist/lazygimp.tar.gz", "label": "lazygimp.tar.gz — Linux installer bundle (stable URL)" },
-          { "path": "dist/lazygimp-*.tar.gz", "label": "lazygimp-${nextRelease.version}.tar.gz — Linux installer bundle" },
-          { "path": "dist/install-lazygimp.ps1", "label": "install-lazygimp.ps1 — Windows installer script" },
-          { "path": "dist/checksums.txt", "label": "checksums.txt — SHA-256 checksums" }
+          { "path": "dist/package-manager-install.sh", "label": "Linux package manager — package-manager-install.sh" },
+          { "path": "dist/flatpak-install.sh", "label": "Linux Flatpak — flatpak-install.sh" },
+          { "path": "dist/appimage-install.sh", "label": "Linux AppImage — appimage-install.sh" },
+          { "path": "dist/install.sh", "label": "Linux interactive (picks a method for you) — install.sh" },
+          { "path": "dist/plugins-install.sh", "label": "Linux plug-ins only (Batcher, SAM) — plugins-install.sh" },
+          { "path": "dist/uninstall.sh", "label": "Linux uninstall — uninstall.sh" },
+          { "path": "dist/windows-install.ps1", "label": "Windows — windows-install.ps1" },
+          { "path": "dist/lazygimp.tar.gz", "label": "Bundle (stable URL, used by the scripts) — lazygimp.tar.gz" },
+          { "path": "dist/lazygimp-*.tar.gz", "label": "Bundle, versioned — lazygimp-${nextRelease.version}.tar.gz" },
+          { "path": "dist/checksums.txt", "label": "SHA-256 — checksums.txt" }
         ],
         "successComment": false
       }

@@ -18,10 +18,10 @@ This keeps the whole project a few hundred lines of shell and PowerShell — sma
 ```
 install.sh                       ORCHESTRATOR ONLY: interactive menu → dispatch;
                                  downloads nothing before the user chooses
-install_with_package_manager.sh  method: native distro packages (default)
-install_with_flatpak.sh          method: Flathub GIMP + G'MIC extension
-install_with_appimage.sh         method: official gimp.org AppImage
-install_plugins.sh               optional plug-ins (Batcher, Segment Anything)
+package-manager-install.sh  method: native distro packages (default)
+flatpak-install.sh          method: Flathub GIMP + G'MIC extension
+appimage-install.sh         method: official gimp.org AppImage
+plugins-install.sh               optional plug-ins (Batcher, Segment Anything)
 uninstall.sh                     detect-and-confirm removal of everything we installed
 shell_scripts/<distro>.sh        per-distro package logic ONLY (one file per family)
 lib/
@@ -30,14 +30,18 @@ lib/
   photogimp.sh                   the PhotoGIMP configuration layer (backup + manifest)
   plugins.sh                     the optional plug-ins layer (state-tracked folders)
 config/versions.conf             every pinned version/URL, in one place (Renovate-managed)
-windows/install-lazygimp.ps1     Windows path (same design, in PowerShell)
+windows/windows-install.ps1     Windows path (same design, in PowerShell)
 scripts/build_release_assets.sh  builds dist/ for a release
 tests/*.bats                     unit tests for the resolution and layer logic
 .github/workflows/{ci,release}.yml
 .releaserc, package.json         semantic-release configuration
 ```
 
-One script per method, plus a thin orchestrator. Users who know what they want run the method script directly and get its focused `--help`; `install.sh` exists for the `curl | bash` one-liner and for people who want to be guided. The menu runs on `/dev/tty`, so it works even when the script itself arrives through a pipe; with no terminal attached, an explicit `--method` is required — LazyGimp never auto-picks a download channel silently.
+One script per method, plus a thin orchestrator. Method scripts are **fully unattended** (zero questions — the lazy contract: run, wait, open GIMP); `install.sh` is the only interactive piece, a menu for people who have not chosen a channel yet. The menu runs on `/dev/tty`, so it works even when the script arrives through a pipe; with no terminal attached, an explicit `--method` is required — LazyGimp never auto-picks a download channel silently.
+
+Every entry script carries two small guards: a re-exec shim that tolerates `sh script.sh` (dash, or bash in POSIX mode, which rejects `::` in function names), and a bootstrap block that, when `lib/` is not sitting next to the script, downloads the latest release bundle and re-execs itself from there. That makes each script independently `curl`-able and independently downloadable from a release — the file names (`package-manager-install.sh`, `flatpak-install.sh`, `appimage-install.sh`, `plugins-install.sh`, `uninstall.sh`) are deliberately prefix-distinct for shell autocompletion.
+
+A subtle but critical ordering detail: **GIMP must run once before anything is layered on it**, otherwise its per-user config tree does not exist and there is nothing to target. `gimp::warm_up` launches the freshly installed GIMP headless (`gimp -i -b '(gimp-quit 0)'`, flatpak- and AppImage-aware, with a timeout) right after installation, so the PhotoGIMP layer and the plug-ins always find a real directory.
 
 Extending to a new distribution means adding one `shell_scripts/<id>.sh` file that defines `lazygimp::install_packages` and `lazygimp::remove_packages` (and optionally `lazygimp::post_install_notes`). The dispatcher matches `/etc/os-release` `ID` first, then every entry of `ID_LIKE`, so derivatives (Manjaro→arch, Mint→ubuntu, Nobara→fedora) work without their own file.
 
@@ -96,7 +100,7 @@ Unpacking the official AppImage, injecting G'MIC and PhotoGIMP, and re-squashing
 
 ### Why no MSI/EXE for Windows
 
-An unsigned installer triggers SmartScreen warnings scarier than a script; a code-signing certificate costs money and yearly renewal; and an MSI wrapping the upstream EXE adds no capability over `install-lazygimp.ps1`. If a native artifact becomes worthwhile, the maintainable route is a **WinGet manifest** or a **Chocolatey package**, not a homemade MSI. The script is lint-gated in CI (PSScriptAnalyzer) like everything else.
+An unsigned installer triggers SmartScreen warnings scarier than a script; a code-signing certificate costs money and yearly renewal; and an MSI wrapping the upstream EXE adds no capability over `windows-install.ps1`. If a native artifact becomes worthwhile, the maintainable route is a **WinGet manifest** or a **Chocolatey package**, not a homemade MSI. The script is lint-gated in CI (PSScriptAnalyzer) like everything else.
 
 ## Release pipeline
 
@@ -104,7 +108,7 @@ Modelled on [MorpheApp/morphe-patches](https://github.com/MorpheApp/morphe-patch
 
 * **Conventional commits** drive everything: `feat` → minor, `fix`/`perf`/`refactor` → patch, `BREAKING CHANGE` → major, `docs`/`chore` → no release (but `docs` shows in the notes of the next release).
 * The pipeline bumps the version, regenerates `CHANGELOG.md`, tags, creates the GitHub release, and **backmerges `main` into `dev`**.
-* Release assets, built by `scripts/build_release_assets.sh`: `lazygimp.tar.gz` (stable-URL bundle consumed by the `curl | bash` bootstrap), a versioned copy, `install-lazygimp.ps1`, and `checksums.txt`.
+* Release assets, built by `scripts/build_release_assets.sh`: `lazygimp.tar.gz` (stable-URL bundle consumed by the `curl | bash` bootstrap), a versioned copy, `windows-install.ps1`, and `checksums.txt`.
 
 The bundle at a stable URL is what makes the one-liner work forever:
 `.../releases/latest/download/lazygimp.tar.gz`.
@@ -113,7 +117,7 @@ The bundle at a stable URL is what makes the one-liner work forever:
 
 Every PR runs: `bash -n` + ShellCheck (`--severity=style`, sources followed) on all scripts, bats unit tests on the resolution/layer logic, actionlint on the workflows, and PSScriptAnalyzer on the Windows script.
 
-Renovate keeps three things current with zero manual work: GitHub Actions versions, the semantic-release toolchain in `package.json`, and — via a regex custom manager — every upstream tag pinned in `config/versions.conf` (PhotoGIMP, Batcher, gimpsegany) and in `windows/install-lazygimp.ps1`. A PhotoGIMP bump lands as a `fix:` PR, so merging it automatically publishes a release that ships the new payload. GIMP itself is intentionally *not* pinned anywhere: every method resolves the newest stable at install time.
+Renovate keeps three things current with zero manual work: GitHub Actions versions, the semantic-release toolchain in `package.json`, and — via a regex custom manager — every upstream tag pinned in `config/versions.conf` (PhotoGIMP, Batcher, gimpsegany) and in `windows/windows-install.ps1`. A PhotoGIMP bump lands as a `fix:` PR, so merging it automatically publishes a release that ships the new payload. GIMP itself is intentionally *not* pinned anywhere: every method resolves the newest stable at install time.
 
 ## Testing philosophy
 

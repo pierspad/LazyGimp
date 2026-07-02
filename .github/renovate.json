@@ -22,7 +22,7 @@
     {
       "customType": "regex",
       "description": "Track upstream release tags pinned in shell config and the Windows installer",
-      "fileMatch": ["^config/versions\\.conf$", "^windows/install-lazygimp\\.ps1$"],
+      "fileMatch": ["^config/versions\\.conf$", "^windows/windows-install\\.ps1$"],
       "matchStrings": [
         "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>\\S+)\\s*\\n\\s*\\$?\\w+\\s*=\\s*[\"'](?<currentValue>[^\"']+)[\"']"
       ]

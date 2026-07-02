@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# install_with_appimage.sh — download the *official* GIMP AppImage published
-# by gimp.org, verify its checksum, and apply the PhotoGIMP layer.
+# appimage-install.sh — download the *official* GIMP AppImage published by
+# gimp.org, verify its checksum, then everything else: headless first
+# launch, PhotoGIMP layer, Batcher, Segment Anything. Fully unattended.
 #
 # We deliberately do NOT repackage our own AppImage: gimp.org has shipped
 # official AppImages since GIMP 3.0, and injecting binaries (G'MIC) into a
@@ -9,25 +10,48 @@
 # docs/ARCHITECTURE.md.
 #
 # Usage:
-#   ./install_with_appimage.sh [--skip-photogimp] [--uninstall-photogimp]
+#   ./appimage-install.sh [--skip-photogimp] [--skip-plugins] [--no-sam]
+#
+# Piped usage (no checkout needed):
+#   curl -fsSL https://raw.githubusercontent.com/pierspad/LazyGimp/main/appimage-install.sh | bash
 #
 # The AppImage lands in ~/Applications (override: LAZYGIMP_APPIMAGE_DIR).
 # ---------------------------------------------------------------------------
+
+# Tolerate being launched with `sh script.sh` (dash, or bash in POSIX mode,
+# which rejects function names containing '::'): re-exec under real bash.
+if [ -f "${0:-}" ]; then
+  if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
+  if shopt -qo posix 2>/dev/null; then exec bash "$0" "$@"; fi
+fi
+
 set -euo pipefail
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+LAZYGIMP_REPO_SLUG="${LAZYGIMP_REPO_SLUG:-pierspad/LazyGimp}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]:-$0}")" >/dev/null 2>&1 && pwd)"
+
+# Standalone download or `curl | bash`: fetch the release bundle and re-exec.
+if [[ ! -d "${SCRIPT_DIR}/lib" ]]; then
+  bootstrap_dir="$(mktemp -d "${TMPDIR:-/tmp}/lazygimp-bootstrap.XXXXXX")"
+  trap 'rm -rf "$bootstrap_dir"' EXIT
+  echo "[info] fetching the latest LazyGimp bundle..." >&2
+  curl -fsSL "https://github.com/${LAZYGIMP_REPO_SLUG}/releases/latest/download/lazygimp.tar.gz" |
+    tar -xz -C "$bootstrap_dir"
+  exec bash "${bootstrap_dir}/lazygimp/appimage-install.sh" "$@"
+fi
+
 # shellcheck source=lib/photogimp.sh
 source "${SCRIPT_DIR}/lib/photogimp.sh"
 
 usage() {
   cat <<EOF
-LazyGimp — official gimp.org AppImage installer
+LazyGimp — official gimp.org AppImage installer (fully unattended)
 
 Usage: ${0##*/} [options]
 
 Options:
   --skip-photogimp        do not apply the PhotoGIMP configuration layer
-  --skip-plugins          do not install the optional plug-ins (Batcher, SAM)
+  --skip-plugins          do not install the plug-ins (Batcher, SAM)
   --no-sam                install Batcher but skip Segment Anything (~1 GB)
   --uninstall-photogimp   remove the PhotoGIMP layer (personal files are kept)
   -h, --help              show this help
@@ -35,9 +59,9 @@ Options:
 Environment:
   LAZYGIMP_APPIMAGE_DIR   destination directory (default: ~/Applications)
 
-By default EVERYTHING is set up: GIMP + PhotoGIMP + Batcher + Segment
-Anything with its automated Python backend (G'MIC needs a manual step on
-AppImage — see the note printed at the end).
+By default EVERYTHING is set up, no questions asked: GIMP + PhotoGIMP +
+Batcher + Segment Anything (G'MIC needs a manual step on AppImage — see
+the note printed at the end).
 EOF
 }
 
@@ -101,6 +125,9 @@ main() {
   ln -sf "$filename" "${dest_dir}/GIMP.AppImage"
   log::ok "GIMP ${version} AppImage installed at ${dest} (symlink: GIMP.AppImage)"
 
+  # GIMP must run once to generate its config tree before we layer on it.
+  gimp::warm_up native "$dest"
+
   if [[ "$SKIP_PHOTOGIMP" != 1 ]]; then
     # The AppImage is not on PATH, but we know exactly which version we
     # just downloaded — pass it as a hint to the config-dir resolver.
@@ -115,14 +142,14 @@ main() {
       plugin_args+=(--segment-anything)
     fi
     if ! LAZYGIMP_GIMP_VERSION_HINT="$version" \
-      "${SCRIPT_DIR}/install_plugins.sh" "${plugin_args[@]}"; then
-      log::warn "plug-ins step failed — re-run it later with: ./install_plugins.sh"
+      "${SCRIPT_DIR}/plugins-install.sh" "${plugin_args[@]}"; then
+      log::warn "plug-ins step failed — re-run it later with: ./plugins-install.sh"
     fi
   fi
 
   log::warn "G'MIC cannot be bundled into the official AppImage safely;"
   log::warn "grab the GIMP plugin build from ${GMIC_DOWNLOAD_PAGE} if you need it,"
-  log::warn "or prefer ./install_with_flatpak.sh which includes G'MIC."
+  log::warn "or prefer ./flatpak-install.sh which includes G'MIC."
 }
 
 main

@@ -13,7 +13,7 @@
     is written, and every file the layer installs is recorded in a manifest.
 
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File install-lazygimp.ps1
+    powershell -ExecutionPolicy Bypass -File windows-install.ps1
 
 .NOTES
     Why a script instead of an MSI? See docs/ARCHITECTURE.md in the repo:

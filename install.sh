@@ -4,11 +4,11 @@
 #
 # This script installs NOTHING by itself: it only helps you pick a method
 # and dispatches to the matching standalone installer, which you can also
-# run directly:
+# run directly (each is fully unattended — zero questions):
 #
-#   install_with_package_manager.sh   native distro packages   (default)
-#   install_with_flatpak.sh           Flathub + G'MIC extension
-#   install_with_appimage.sh          official gimp.org AppImage
+#   package-manager-install.sh   native distro packages   (default)
+#   flatpak-install.sh           Flathub GIMP + G'MIC + Resynthesizer
+#   appimage-install.sh          official gimp.org AppImage
 #
 # Without --method an interactive menu is shown (it works for `curl | bash`
 # too, via /dev/tty). Nothing is ever downloaded before you have chosen.
@@ -19,6 +19,14 @@
 # Piped usage (no checkout needed):
 #   curl -fsSL https://raw.githubusercontent.com/pierspad/LazyGimp/main/install.sh | bash
 # ---------------------------------------------------------------------------
+
+# Tolerate being launched with `sh script.sh` (dash, or bash in POSIX mode,
+# which rejects function names containing '::'): re-exec under real bash.
+if [ -f "${0:-}" ]; then
+  if [ -z "${BASH_VERSION:-}" ]; then exec bash "$0" "$@"; fi
+  if shopt -qo posix 2>/dev/null; then exec bash "$0" "$@"; fi
+fi
+
 set -euo pipefail
 
 LAZYGIMP_VERSION="0.0.0-dev" # replaced by the release pipeline
@@ -59,14 +67,14 @@ Options:
 By default EVERYTHING is set up and ready to use: GIMP + G'MIC + PhotoGIMP
 + Batcher + Segment Anything (with its Python backend, automated).
 
-Methods (each is also a standalone script you can run directly):
+Methods (each is also a standalone, fully unattended script):
   package-manager  native distro packages, updated by your system   [default]
-                   → ./install_with_package_manager.sh
-  flatpak          Flathub GIMP + G'MIC extension, auto-updated —
+                   → ./package-manager-install.sh
+  flatpak          Flathub GIMP + G'MIC + Resynthesizer, auto-updated —
                    best on Debian stable / Ubuntu LTS, whose repos lag
-                   → ./install_with_flatpak.sh
+                   → ./flatpak-install.sh
   appimage         official gimp.org AppImage, single portable file
-                   → ./install_with_appimage.sh
+                   → ./appimage-install.sh
 
 To remove everything (and optionally reinstall with another method):
   ./uninstall.sh
@@ -184,9 +192,9 @@ main() {
   fi
 
   case "$METHOD" in
-    package-manager) exec "${SCRIPT_DIR}/install_with_package_manager.sh" ;;
-    flatpak) exec "${SCRIPT_DIR}/install_with_flatpak.sh" ;;
-    appimage) exec "${SCRIPT_DIR}/install_with_appimage.sh" ;;
+    package-manager) exec "${SCRIPT_DIR}/package-manager-install.sh" ;;
+    flatpak) exec "${SCRIPT_DIR}/flatpak-install.sh" ;;
+    appimage) exec "${SCRIPT_DIR}/appimage-install.sh" ;;
     *) die "unknown method: ${METHOD} (see --help)" ;;
   esac
 }

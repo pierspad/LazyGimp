@@ -107,7 +107,7 @@ from the checkpoint filename).
 
 GPU acceleration: reinstall the backend with a CUDA/ROCm wheel index, e.g.
   LAZYGIMP_TORCH_INDEX_URL=https://download.pytorch.org/whl/cu126 \\
-  ./install_plugins.sh --segment-anything
+  ./plugins-install.sh --segment-anything
 EOF
   printf '%s\n' "$info"
 }
