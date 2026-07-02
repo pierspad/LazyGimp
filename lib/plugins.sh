@@ -65,13 +65,11 @@ plugins::install_batcher() { # <kind>
 }
 
 # Segment Anything — AI subject selection (AGPL-3.0). The GIMP plug-in is
-# tiny; the heavy lifting needs a Python backend the user installs once.
+# tiny; the inference backend is handled by lib/segany_backend.sh.
 plugins::install_segany() { # <kind>
   local url="https://github.com/${SEGANY_REPO}/releases/download/${SEGANY_RELEASE_TAG}/gimp-segany-gimp3.zip"
   plugins::install_zip seganyplugin "$url" "$1"
-  log::warn "Segment Anything needs a separate Python backend to actually run:"
-  log::warn "PyTorch + SAM/SAM2 checkpoints (several GB, GPU recommended)."
-  log::warn "setup guide: https://github.com/${SEGANY_REPO}#readme"
+  log::info "find it under Image → Segment Anything Layers after a GIMP restart"
 }
 
 # Remove every plug-in folder LazyGimp installed (recorded in the manifest).

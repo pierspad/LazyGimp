@@ -18,8 +18,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
-# shellcheck source=lib/plugins.sh
-source "${SCRIPT_DIR}/lib/plugins.sh"
+# shellcheck source=lib/segany_backend.sh
+source "${SCRIPT_DIR}/lib/segany_backend.sh"
 
 usage() {
   cat <<EOF
@@ -29,14 +29,19 @@ Usage: ${0##*/} [options]
 
 Options:
   --batcher            install Batcher (batch processing / export layers)
-  --segment-anything   install Segment Anything (EXPERIMENTAL, needs a
-                       separate PyTorch/SAM backend — several GB)
+  --segment-anything   install Segment Anything, INCLUDING its Python backend
+                       (PyTorch CPU + SAM checkpoint, ~1 GB download) — the
+                       result is fully working out of the box
+  --no-sam-backend     with --segment-anything: install the plug-in only,
+                       manage the Python backend yourself
   --kind <k>           target GIMP install kind: native | flatpak
                        (default: auto-detected)
   --uninstall-all      remove every plug-in installed by LazyGimp
+                       (and the SAM backend, if present)
   -h, --help           show this help
 
 Run without options for an interactive menu.
+GPU acceleration: LAZYGIMP_TORCH_INDEX_URL=<torch wheel index> (default: CPU wheels).
 EOF
 }
 
@@ -61,22 +66,22 @@ choose_interactively() {
   [[ -r "$tty" && -w "$tty" ]] || return 1
   {
     printf '\nLazyGimp — optional plug-ins\n\n'
-    printf '  1) batcher            batch processing / export layers (recommended)\n'
-    printf '  2) segment-anything   AI subject selection — EXPERIMENTAL, needs a\n'
-    printf '                        separate PyTorch/SAM backend (several GB)\n'
-    printf '  3) both\n'
+    printf '  1) both               everything, ready to use (default)\n'
+    printf '  2) batcher            batch processing / export layers\n'
+    printf '  3) segment-anything   AI subject selection, incl. automated\n'
+    printf '                        PyTorch/SAM backend (~1 GB download)\n'
     printf '  q) quit\n\n'
   } >"$tty"
   while true; do
     printf 'Choice [1]: ' >"$tty"
     read -r choice <"$tty" || return 1
     case "$choice" in
-      '' | 1) WANT_BATCHER=1 ;;
-      2) WANT_SEGANY=1 ;;
-      3)
+      '' | 1)
         WANT_BATCHER=1
         WANT_SEGANY=1
         ;;
+      2) WANT_BATCHER=1 ;;
+      3) WANT_SEGANY=1 ;;
       q | quit) exit 0 ;;
       *)
         printf 'invalid choice: %s\n' "$choice" >"$tty"
@@ -90,10 +95,12 @@ choose_interactively() {
 KIND=""
 WANT_BATCHER=0
 WANT_SEGANY=0
+SAM_BACKEND=1
 while (($#)); do
   case "$1" in
     --batcher) WANT_BATCHER=1 ;;
     --segment-anything | --segany) WANT_SEGANY=1 ;;
+    --no-sam-backend) SAM_BACKEND=0 ;;
     --kind)
       KIND="${2:?--kind requires a value}"
       shift
@@ -101,6 +108,7 @@ while (($#)); do
     --kind=*) KIND="${1#*=}" ;;
     --uninstall-all)
       plugins::uninstall_all
+      segany::remove_backend
       exit 0
       ;;
     -h | --help)
@@ -129,6 +137,12 @@ main() {
   fi
   if ((WANT_SEGANY)); then
     plugins::install_segany "$KIND"
+    if ((SAM_BACKEND)); then
+      segany::install_backend "$KIND"
+    else
+      log::warn "SAM backend skipped (--no-sam-backend) — the plug-in needs one to run:"
+      log::warn "see https://github.com/${SEGANY_REPO}#readme"
+    fi
   fi
 
   log::ok "done — restart GIMP to load the new plug-ins"

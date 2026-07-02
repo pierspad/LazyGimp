@@ -53,10 +53,10 @@
       "@semantic-release/github",
       {
         "assets": [
-          { "path": "dist/lazygimp.tar.gz", "label": "LazyGimp installer bundle" },
-          { "path": "dist/lazygimp-*.tar.gz", "label": "LazyGimp installer bundle (versioned)" },
-          { "path": "dist/install-lazygimp.ps1", "label": "Windows installer script" },
-          { "path": "dist/checksums.txt", "label": "SHA-256 checksums" }
+          { "path": "dist/lazygimp.tar.gz", "label": "lazygimp.tar.gz — Linux installer bundle (stable URL)" },
+          { "path": "dist/lazygimp-*.tar.gz", "label": "lazygimp-${nextRelease.version}.tar.gz — Linux installer bundle" },
+          { "path": "dist/install-lazygimp.ps1", "label": "install-lazygimp.ps1 — Windows installer script" },
+          { "path": "dist/checksums.txt", "label": "checksums.txt — SHA-256 checksums" }
         ],
         "successComment": false
       }

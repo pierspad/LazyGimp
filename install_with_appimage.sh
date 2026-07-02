@@ -26,19 +26,29 @@ LazyGimp — official gimp.org AppImage installer
 Usage: ${0##*/} [options]
 
 Options:
-  --skip-photogimp        install the AppImage only
+  --skip-photogimp        do not apply the PhotoGIMP configuration layer
+  --skip-plugins          do not install the optional plug-ins (Batcher, SAM)
+  --no-sam                install Batcher but skip Segment Anything (~1 GB)
   --uninstall-photogimp   remove the PhotoGIMP layer (personal files are kept)
   -h, --help              show this help
 
 Environment:
   LAZYGIMP_APPIMAGE_DIR   destination directory (default: ~/Applications)
+
+By default EVERYTHING is set up: GIMP + PhotoGIMP + Batcher + Segment
+Anything with its automated Python backend (G'MIC needs a manual step on
+AppImage — see the note printed at the end).
 EOF
 }
 
 SKIP_PHOTOGIMP="${LAZYGIMP_SKIP_PHOTOGIMP:-0}"
+SKIP_PLUGINS="${LAZYGIMP_SKIP_PLUGINS:-0}"
+NO_SAM="${LAZYGIMP_NO_SAM:-0}"
 while (($#)); do
   case "$1" in
     --skip-photogimp) SKIP_PHOTOGIMP=1 ;;
+    --skip-plugins) SKIP_PLUGINS=1 ;;
+    --no-sam) NO_SAM=1 ;;
     --uninstall-photogimp)
       photogimp::uninstall native
       exit 0
@@ -99,10 +109,20 @@ main() {
     fi
   fi
 
+  if [[ "$SKIP_PLUGINS" != 1 ]]; then
+    local plugin_args=(--kind native --batcher)
+    if [[ "$NO_SAM" != 1 ]]; then
+      plugin_args+=(--segment-anything)
+    fi
+    if ! LAZYGIMP_GIMP_VERSION_HINT="$version" \
+      "${SCRIPT_DIR}/install_plugins.sh" "${plugin_args[@]}"; then
+      log::warn "plug-ins step failed — re-run it later with: ./install_plugins.sh"
+    fi
+  fi
+
   log::warn "G'MIC cannot be bundled into the official AppImage safely;"
   log::warn "grab the GIMP plugin build from ${GMIC_DOWNLOAD_PAGE} if you need it,"
   log::warn "or prefer ./install_with_flatpak.sh which includes G'MIC."
-  log::info "optional plug-ins (Batcher, Segment Anything): ./install_plugins.sh"
 }
 
 main

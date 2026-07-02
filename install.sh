@@ -52,7 +52,12 @@ Options:
   -m, --method <m>      package-manager | flatpak | appimage | auto
                         (no flag → interactive menu; 'auto' → first available)
       --skip-photogimp  do not apply the PhotoGIMP configuration layer
+      --skip-plugins    do not install the optional plug-ins (Batcher, SAM)
+      --no-sam          install Batcher but skip Segment Anything (~1 GB)
   -h, --help            show this help
+
+By default EVERYTHING is set up and ready to use: GIMP + G'MIC + PhotoGIMP
++ Batcher + Segment Anything (with its Python backend, automated).
 
 Methods (each is also a standalone script you can run directly):
   package-manager  native distro packages, updated by your system   [default]
@@ -146,6 +151,8 @@ while (($#)); do
       ;;
     --method=*) METHOD="${1#*=}" ;;
     --skip-photogimp) export LAZYGIMP_SKIP_PHOTOGIMP=1 ;;
+    --skip-plugins) export LAZYGIMP_SKIP_PLUGINS=1 ;;
+    --no-sam) export LAZYGIMP_NO_SAM=1 ;;
     -h | --help)
       usage
       exit 0

@@ -23,18 +23,27 @@ LazyGimp — native package manager installer
 Usage: ${0##*/} [options]
 
 Options:
-  --skip-photogimp        install GIMP and G'MIC only
+  --skip-photogimp        do not apply the PhotoGIMP configuration layer
+  --skip-plugins          do not install the optional plug-ins (Batcher, SAM)
+  --no-sam                install Batcher but skip Segment Anything (~1 GB)
   --uninstall-photogimp   remove the PhotoGIMP layer (personal files are kept)
   -h, --help              show this help
+
+By default EVERYTHING is set up: GIMP + G'MIC + PhotoGIMP + Batcher +
+Segment Anything with its automated Python backend.
 
 Supported distribution families: $(find "${SCRIPT_DIR}/shell_scripts" -name '*.sh' -printf '%f ' | sed 's/\.sh//g')
 EOF
 }
 
 SKIP_PHOTOGIMP="${LAZYGIMP_SKIP_PHOTOGIMP:-0}"
+SKIP_PLUGINS="${LAZYGIMP_SKIP_PLUGINS:-0}"
+NO_SAM="${LAZYGIMP_NO_SAM:-0}"
 while (($#)); do
   case "$1" in
     --skip-photogimp) SKIP_PHOTOGIMP=1 ;;
+    --skip-plugins) SKIP_PLUGINS=1 ;;
+    --no-sam) NO_SAM=1 ;;
     --uninstall-photogimp)
       photogimp::uninstall native
       exit 0
@@ -77,8 +86,17 @@ PhotoGIMP layer must land in *your* home, not root's"
     fi
   fi
 
+  if [[ "$SKIP_PLUGINS" != 1 ]]; then
+    local plugin_args=(--kind native --batcher)
+    if [[ "$NO_SAM" != 1 ]]; then
+      plugin_args+=(--segment-anything)
+    fi
+    if ! "${SCRIPT_DIR}/install_plugins.sh" "${plugin_args[@]}"; then
+      log::warn "plug-ins step failed — re-run it later with: ./install_plugins.sh"
+    fi
+  fi
+
   log::ok "all done — launch GIMP and enjoy"
-  log::info "optional plug-ins (Batcher, Segment Anything): ./install_plugins.sh"
 }
 
 main

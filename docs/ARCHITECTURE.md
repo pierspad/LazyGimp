@@ -65,15 +65,17 @@ The manifest also makes upgrades idempotent: re-running the installer rewrites t
 
 ### The same pattern, reused: optional plug-ins
 
-`lib/plugins.sh` applies the identical design to optional plug-ins (Batcher, Segment Anything): resolve the real `plug-ins/` directory at runtime, install each plug-in into its own folder, record every folder in a state manifest, remove exactly those folders on uninstall. Because a plug-in folder is entirely ours, removal is a safe `rm -rf` of tracked paths — user plug-ins are untouched. Segment Anything is marked experimental: the GIMP-side plug-in is tiny and safe to install, but it requires a PyTorch/SAM backend (several GB) the user must set up once; we say so loudly instead of pretending it "just works".
+`lib/plugins.sh` applies the identical design to the plug-ins (Batcher, Segment Anything — installed by default, opt out with `--skip-plugins`/`--no-sam`): resolve the real `plug-ins/` directory at runtime, install each plug-in into its own folder, record every folder in a state manifest, remove exactly those folders on uninstall. Because a plug-in folder is entirely ours, removal is a safe `rm -rf` of tracked paths — user plug-ins are untouched.
+
+Segment Anything's backend — the part upstream leaves to the user — is automated by `lib/segany_backend.sh`: a dedicated venv under `~/.local/share/lazygimp/segany/` with CPU PyTorch wheels (universal, ~10x smaller than CUDA; override via `LAZYGIMP_TORCH_INDEX_URL`), the official SAM package, the `vit_b` checkpoint, and upstream's own bridge self-test as the acceptance gate. The one thing that cannot be automated is GIMP's own per-plugin dialog persistence: on first run the user pastes the two paths the installer prints (and saves to `INFO.txt`); GIMP remembers them afterwards. Resynthesizer (Heal Selection) is included on the flatpak method via its Flathub extension; its engine is a per-platform C binary, so on native/AppImage installs we do not attempt fragile binary drops.
 
 ### Uninstall as a first-class citizen
 
 `uninstall.sh` closes the loop: it *detects* what is actually present (native packages, flatpak, AppImage files, PhotoGIMP manifests, plug-in manifests), lists it, and removes what the user confirms — enabling a clean switch between methods. Ordering matters: configuration layers are removed before the GIMP that anchors their config-dir detection. Package removal is delegated to `lazygimp::remove_packages` in the same per-distro files that install them, so the knowledge never spreads.
 
-### Flatpak fonts: opt-in, never silent
+### Flatpak fonts: applied by default, never silent
 
-A common complaint is that the GIMP flatpak "can't see user fonts". On current flatpak this is mostly outdated — system and user fonts are exposed to the sandbox by default; what may genuinely be missing is a *custom fontconfig configuration*. We therefore ship `--font-access` on the flatpak installer: it applies `flatpak override --user --filesystem=~/.local/share/fonts:ro --filesystem=xdg-config/fontconfig:ro`, explains what it did, records the exact overrides in the state dir, and `uninstall.sh` reverts precisely those. Widening a sandbox behind the user's back is not something an installer should ever do, so there is no automatic default.
+A common complaint is that the GIMP flatpak "can't see user fonts". On current flatpak this is mostly outdated — system and user fonts are exposed to the sandbox by default; what may genuinely be missing is a *custom fontconfig configuration*. LazyGimp's goal is "nothing missing out of the box", so the flatpak installer applies a **read-only** override (`flatpak override --user --filesystem=~/.local/share/fonts:ro --filesystem=xdg-config/fontconfig:ro`) by default — but never silently: it logs what it did, records the exact overrides in the state dir, `uninstall.sh` reverts precisely those, and `--no-font-access` opts out. Read-only scope keeps the sandbox widening minimal and harmless.
 
 ## Install methods and their trade-offs
 

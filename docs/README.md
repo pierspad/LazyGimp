@@ -44,28 +44,21 @@ It downloads the official GIMP installer (checksum-verified against gimp.org's o
 
 Works with any GIMP 3.x — including future releases. Nothing in LazyGimp hardcodes a GIMP version: the right config directory (`3.0`, `3.2`, `3.4`, ...) is detected at runtime. See [ARCHITECTURE.md](ARCHITECTURE.md) for how and why.
 
-## Optional plug-ins
+## Plug-ins (installed by default)
 
-```bash
-./install_plugins.sh
-```
+A default install sets up **everything**: GIMP + PhotoGIMP + G'MIC + the plug-ins below, ready to use. Opt out with `--skip-plugins` or `--no-sam`.
 
 | Plug-in | What it adds | Notes |
 |---|---|---|
 | [Batcher](https://github.com/kamilburda/batcher) | Batch processing, convert images, **export layers as separate files** | Just works after a GIMP restart |
-| [Segment Anything](https://github.com/Shriinivas/gimpsegany) | AI subject selection via Meta SAM/SAM2 | **Experimental** — the plug-in is installed for you, but it needs a separate Python backend (PyTorch + model checkpoints, several GB) you set up once following [upstream's guide](https://github.com/Shriinivas/gimpsegany#readme) |
+| [Segment Anything](https://github.com/Shriinivas/gimpsegany) | AI subject selection via Meta SAM | **Fully automated backend**: LazyGimp creates a dedicated Python venv (PyTorch CPU wheels), installs SAM, downloads the checkpoint (~1 GB total) and runs upstream's self-test. On first use, paste the two paths shown by the installer (also in `~/.local/share/lazygimp/segany/INFO.txt`) — GIMP remembers them. GPU: `LAZYGIMP_TORCH_INDEX_URL=<cuda wheel index> ./install_plugins.sh --segment-anything` |
+| [Resynthesizer](https://github.com/bootchk/resynthesizer) | Heal Selection — content-aware fill, GIMP's most loved plug-in | Flatpak method only (installed as Flathub extension); native builds are per-platform C binaries |
 
-Both are installed into the plug-ins folder of whichever GIMP you have (native or flatpak, auto-detected) and tracked for clean removal.
+Plug-ins land in the plug-ins folder of whichever GIMP you have (native or flatpak, auto-detected) and are tracked for clean removal. Standalone: `./install_plugins.sh`.
 
 ## Fonts and the flatpak sandbox
 
-Recent flatpak already exposes your system **and** user fonts to GIMP, so most people need nothing. If a *custom fontconfig setup* of yours is not picked up, opt in explicitly:
-
-```bash
-./install_with_flatpak.sh --font-access
-```
-
-This grants the sandbox read access to `~/.local/share/fonts` and `~/.config/fontconfig`, tells you it did, records the override, and `./uninstall.sh` reverts it. It is never applied silently.
+Recent flatpak already exposes your system **and** user fonts to GIMP. To make sure nothing is ever missing (custom fontconfig setups included), the flatpak installer additionally grants the sandbox **read-only** access to `~/.local/share/fonts` and `~/.config/fontconfig` — it tells you it did, records the exact override, and `./uninstall.sh` reverts it. Opt out with `--no-font-access`.
 
 ## Undo / uninstall
 
@@ -91,6 +84,7 @@ LazyGimp is a thin installer/configurator: it **does not bundle or redistribute*
 | [PhotoGIMP](https://github.com/Diolinux/PhotoGIMP) | Diolinux | Photoshop-style configuration layer | [GPL-3.0](https://github.com/Diolinux/PhotoGIMP/blob/master/LICENSE) |
 | [G'MIC](https://gmic.eu) | GREYC / D. Tschumperlé et al. | 500+ image filters | [CeCILL 2.1 / CeCILL-C](https://gmic.eu/download.html) |
 | [Batcher](https://github.com/kamilburda/batcher) | Kamil Burda | Batch processing & layer export | [BSD-3-Clause](https://github.com/kamilburda/batcher/blob/main/LICENSE) |
+| [Resynthesizer](https://github.com/bootchk/resynthesizer) | Lloyd Konneker (bootchk) et al. | Heal Selection / texture synthesis | [GPL-3.0](https://github.com/bootchk/resynthesizer/blob/master/COPYING) |
 | [gimpsegany](https://github.com/Shriinivas/gimpsegany) | Shriinivas | Segment Anything integration | [AGPL-3.0](https://github.com/Shriinivas/gimpsegany/blob/main/LICENSE) |
 | [Segment Anything](https://github.com/facebookresearch/segment-anything) | Meta AI | AI models behind gimpsegany | [Apache-2.0](https://github.com/facebookresearch/segment-anything/blob/main/LICENSE) |
 

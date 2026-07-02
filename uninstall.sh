@@ -21,8 +21,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 # shellcheck source=lib/photogimp.sh
 source "${SCRIPT_DIR}/lib/photogimp.sh"
-# shellcheck source=lib/plugins.sh
-source "${SCRIPT_DIR}/lib/plugins.sh"
+# shellcheck source=lib/segany_backend.sh
+source "${SCRIPT_DIR}/lib/segany_backend.sh"
 
 usage() {
   cat <<EOF
@@ -67,7 +67,7 @@ detected_photogimp() {
 }
 
 detected_plugins() {
-  [[ -s "$(plugins::state_file)" ]]
+  [[ -s "$(plugins::state_file)" || -d "$(segany::backend_dir)" ]]
 }
 
 # -------------------------------- removal ---------------------------------
@@ -213,7 +213,10 @@ main() {
     ((wanted)) || continue
     case "$t" in
       photogimp) remove_photogimp ;;
-      plugins) plugins::uninstall_all ;;
+      plugins)
+        plugins::uninstall_all
+        segany::remove_backend
+        ;;
       package-manager) confirm "remove GIMP and G'MIC native packages?" && remove_package_manager ;;
       flatpak) confirm "remove the GIMP flatpak?" && remove_flatpak ;;
       appimage) confirm "remove the GIMP AppImage?" && remove_appimage ;;

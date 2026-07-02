@@ -23,17 +23,22 @@ LazyGimp — Flatpak installer (Flathub)
 Usage: ${0##*/} [options]
 
 Options:
-  --skip-photogimp        install GIMP and G'MIC only
-  --font-access           grant the sandbox read access to ~/.local/share/fonts
-                          and your fontconfig configuration (opt-in; see note)
+  --skip-photogimp        do not apply the PhotoGIMP configuration layer
+  --skip-plugins          do not install the optional plug-ins (Batcher, SAM)
+  --no-sam                install Batcher but skip Segment Anything (~1 GB)
+  --no-font-access        do not apply the font sandbox override (see note)
   --uninstall-photogimp   remove the PhotoGIMP layer (personal files are kept)
   -h, --help              show this help
 
-Note on --font-access:
-  Recent flatpak already exposes system AND user fonts to GIMP, so most
-  people need nothing. Pass --font-access only if a custom fontconfig setup
-  of yours is not picked up. The override is recorded and can be reverted
-  with ./uninstall.sh (or: flatpak override --user --reset org.gimp.GIMP).
+By default EVERYTHING is set up: GIMP + G'MIC + PhotoGIMP + Batcher +
+Segment Anything with its automated Python backend.
+
+Note on fonts:
+  Recent flatpak already exposes system AND user fonts to GIMP. To make
+  sure nothing is ever missing (e.g. custom fontconfig setups), LazyGimp
+  additionally grants the sandbox READ-ONLY access to ~/.local/share/fonts
+  and ~/.config/fontconfig. This is logged, recorded, and reverted by
+  ./uninstall.sh. Pass --no-font-access to skip it.
 EOF
 }
 
@@ -53,11 +58,16 @@ apply_font_overrides() {
 }
 
 SKIP_PHOTOGIMP="${LAZYGIMP_SKIP_PHOTOGIMP:-0}"
-FONT_ACCESS=0
+SKIP_PLUGINS="${LAZYGIMP_SKIP_PLUGINS:-0}"
+NO_SAM="${LAZYGIMP_NO_SAM:-0}"
+FONT_ACCESS=1
 while (($#)); do
   case "$1" in
     --skip-photogimp) SKIP_PHOTOGIMP=1 ;;
-    --font-access) FONT_ACCESS=1 ;;
+    --skip-plugins) SKIP_PLUGINS=1 ;;
+    --no-sam) NO_SAM=1 ;;
+    --font-access) FONT_ACCESS=1 ;; # kept for compatibility (now the default)
+    --no-font-access) FONT_ACCESS=0 ;;
     --uninstall-photogimp)
       photogimp::uninstall flatpak
       exit 0
@@ -85,12 +95,15 @@ main() {
   log::info "installing ${GIMP_FLATPAK_ID} from flathub"
   flatpak install -y flathub "${GIMP_FLATPAK_ID}"
 
-  # The G'MIC plugin ships as a flatpak *extension*; flatpak resolves the
-  # branch matching the installed GIMP automatically.
-  if ! flatpak install -y flathub "${GMIC_FLATPAK_ID}"; then
-    log::warn "G'MIC flatpak extension not available for this GIMP branch yet"
-    log::warn "you can install it manually later: flatpak install flathub ${GMIC_FLATPAK_ID}"
-  fi
+  # Plug-ins ship as flatpak *extensions*; flatpak resolves the branch
+  # matching the installed GIMP automatically.
+  local ext
+  for ext in "${GMIC_FLATPAK_ID}" "${RESYNTH_FLATPAK_ID}"; do
+    if ! flatpak install -y flathub "$ext"; then
+      log::warn "${ext##*.} flatpak extension not available for this GIMP branch yet"
+      log::warn "install it manually later: flatpak install flathub ${ext}"
+    fi
+  done
 
   if [[ "$SKIP_PHOTOGIMP" != 1 ]]; then
     if ! (photogimp::install flatpak); then
@@ -101,12 +114,20 @@ main() {
   if ((FONT_ACCESS)); then
     apply_font_overrides
   else
-    log::info "fonts: system and user fonts are normally visible to the flatpak already;"
-    log::info "if a custom fontconfig setup is missing, re-run with --font-access"
+    log::info "font sandbox override skipped (--no-font-access)"
+  fi
+
+  if [[ "$SKIP_PLUGINS" != 1 ]]; then
+    local plugin_args=(--kind flatpak --batcher)
+    if [[ "$NO_SAM" != 1 ]]; then
+      plugin_args+=(--segment-anything)
+    fi
+    if ! "${SCRIPT_DIR}/install_plugins.sh" "${plugin_args[@]}"; then
+      log::warn "plug-ins step failed — re-run it later with: ./install_plugins.sh"
+    fi
   fi
 
   log::ok "flatpak setup complete — launch GIMP from your app menu"
-  log::info "optional plug-ins (Batcher, Segment Anything): ./install_plugins.sh"
 }
 
 main
