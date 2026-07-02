@@ -69,15 +69,27 @@ trap _lazygimp_cleanup EXIT
 
 # -------------------------------- downloads --------------------------------
 download() { # download <url> <dest-file>
-  local url="$1" dest="$2"
+  local url="$1" dest="$2" part="$2.part"
   log::info "downloading ${url}"
+  # Atomic: fetch to .part, then move — an interrupted download can never
+  # leave a truncated file that later looks "already present". A terminal
+  # gets an inline progress bar so big downloads never look like a hang.
   if have curl; then
-    curl -fsSL --retry 3 -o "$dest" "$url"
+    if [[ -t 2 ]]; then
+      curl -fL --retry 3 --progress-bar -o "$part" "$url"
+    else
+      curl -fsSL --retry 3 -o "$part" "$url"
+    fi
   elif have wget; then
-    wget -qO "$dest" "$url"
+    if [[ -t 2 ]]; then
+      wget -q --show-progress -O "$part" "$url"
+    else
+      wget -qO "$part" "$url"
+    fi
   else
     die "neither curl nor wget is available"
   fi
+  mv -f -- "$part" "$dest"
 }
 
 fetch() { # fetch <url> → stdout

@@ -17,7 +17,10 @@ source "$(dirname -- "${BASH_SOURCE[0]}")/gimp.sh"
 LAZYGIMP_STATE_DIR="${LAZYGIMP_STATE_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/lazygimp}"
 
 plugins::dir() { # <native|flatpak|snap>
-  printf '%s/plug-ins\n' "$(gimp::config_dir "$1")"
+  local config_dir
+  config_dir="$(gimp::config_dir "$1")" || return 1
+  [[ -n "$config_dir" ]] || return 1
+  printf '%s/plug-ins\n' "$config_dir"
 }
 
 plugins::state_file() {
@@ -46,7 +49,10 @@ plugins::install_zip() { # <plugin-folder-name> <url> <kind>
   src="$(find "${tmp}/extracted" -maxdepth 3 -type d -name "$name" 2>/dev/null | head -n1)"
   [[ -n "$src" ]] || die "folder '${name}' not found inside the downloaded archive"
 
-  dest="$(plugins::dir "$kind")"
+  dest="$(plugins::dir "$kind")" || {
+    log::error "cannot resolve the plug-ins directory for kind '${kind}'"
+    return 1
+  }
   mkdir -p "$dest"
   rm -rf "${dest:?}/${name}" # idempotent upgrade: this folder is entirely ours
   cp -a "$src" "${dest}/"

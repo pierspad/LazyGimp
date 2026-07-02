@@ -60,16 +60,33 @@ photogimp::backup() { # <target-dir>
   printf '%s\n' "$backup"
 }
 
+# Files from the PhotoGIMP payload that must NEVER be copied: pluginrc is
+# GIMP's *plug-in registry cache*, specific to the packager's machine — it
+# makes ghost menu entries appear (e.g. a greyed-out G'MIC that is not
+# actually installed). GIMP regenerates it on startup.
+readonly -a PHOTOGIMP_EXCLUDE=(pluginrc)
+
 # Copy the payload file-by-file, recording every path we own in a manifest.
 # Files that belong to the user but are NOT part of PhotoGIMP (brushes,
 # scripts, plug-ins, palettes, ...) are never touched; files we do overwrite
 # are recoverable from the backup produced by photogimp::backup.
 photogimp::apply() { # <payload-dir> <target-dir>
-  local payload="$1" target="$2" file rel
+  local payload="$1" target="$2" file rel excluded
+  # Defence in depth: a broken resolver upstream must never make us write
+  # into '' or '/'.
+  if [[ -z "$payload" || -z "$target" || "$target" != /?*/* ]]; then
+    log::error "refusing to apply PhotoGIMP: invalid target '${target}'"
+    return 1
+  fi
   mkdir -p "$target"
   : >"${target}/${PHOTOGIMP_MANIFEST}"
   while IFS= read -r -d '' file; do
     rel="${file#"${payload}"/}"
+    for excluded in "${PHOTOGIMP_EXCLUDE[@]}"; do
+      if [[ "$rel" == "$excluded" ]]; then
+        continue 2
+      fi
+    done
     install -D -m 0644 "$file" "${target}/${rel}"
     printf '%s\n' "$rel" >>"${target}/${PHOTOGIMP_MANIFEST}"
   done < <(find "$payload" -type f -print0)
@@ -88,11 +105,16 @@ photogimp::remove() { # <target-dir>
   find "$target" -type d -empty -delete 2>/dev/null || true
 }
 
-# Desktop entry and icons shipped by PhotoGIMP (native installs only).
-# Every installed file is recorded in a manifest under the state dir, so
+# Desktop entry and icons shipped by PhotoGIMP. Every installed file is
+# recorded in a manifest under the state dir, so
 # photogimp::remove_desktop_files can undo this cleanly.
-photogimp::install_desktop_files() { # <extracted-dir>
-  local root="$1" share manifest file rel
+#
+# Upstream hardcodes `Exec=/usr/bin/flatpak run ... org.gimp.GIMP` in its
+# .desktop file, which silently does nothing unless GIMP came from flatpak.
+# We retarget Exec to the GIMP that was actually installed (override the
+# command via LAZYGIMP_GIMP_COMMAND, e.g. an AppImage path).
+photogimp::install_desktop_files() { # <extracted-dir> <kind>
+  local root="$1" kind="${2:-native}" share manifest file rel
   share="$(find "$root" -type d -path '*/.local/share' 2>/dev/null | head -n1)"
   [[ -n "$share" ]] || return 0
 
@@ -106,10 +128,29 @@ photogimp::install_desktop_files() { # <extracted-dir>
     printf '%s\n' "${HOME}/.local/share/${rel}" >>"$manifest"
   done < <(find "$share" -type f -print0)
 
+  # Retarget the launcher (flatpak installs keep the upstream flatpak Exec).
+  if [[ "$kind" != flatpak ]]; then
+    local desktop exec_line="${LAZYGIMP_GIMP_COMMAND:-gimp} %U"
+    while IFS= read -r desktop; do
+      [[ "$desktop" == *.desktop ]] || continue
+      sed -i -e "s|^Exec=.*|Exec=${exec_line}|" -e '/^TryExec=/d' -e '/^DBusActivatable=/d' "$desktop"
+    done <"$manifest"
+
+    # Our entry shadows org.gimp.GIMP.desktop, but some distros name the
+    # stock entry differently (e.g. Arch ships gimp.desktop) — hide that
+    # duplicate with a NoDisplay override, tracked for clean removal.
+    local stock="/usr/share/applications/gimp.desktop" hidden
+    hidden="${HOME}/.local/share/applications/gimp.desktop"
+    if [[ -f "$stock" && ! -f "$hidden" ]]; then
+      printf '[Desktop Entry]\nType=Application\nName=GIMP\nNoDisplay=true\n' >"$hidden"
+      printf '%s\n' "$hidden" >>"$manifest"
+    fi
+  fi
+
   if have update-desktop-database; then
     update-desktop-database "${HOME}/.local/share/applications" 2>/dev/null || true
   fi
-  log::info "PhotoGIMP desktop entry and icons installed"
+  log::info "PhotoGIMP desktop entry installed (launches the GIMP set up by LazyGimp)"
 }
 
 # Undo photogimp::install_desktop_files using its manifest.
@@ -127,26 +168,28 @@ photogimp::remove_desktop_files() {
 
 photogimp::install() { # <native|flatpak|snap>
   local kind="$1" target extracted payload backup files
-  target="$(gimp::config_dir "$kind")"
+  # NOTE: `die` inside $() only kills the subshell, and set -e is suspended
+  # when the caller tests our exit status — every step needs its own guard.
+  target="$(gimp::config_dir "$kind")" || return 1
+  [[ -n "$target" ]] || return 1
 
   # PhotoGIMP is a GIMP 3+ patch: refuse to target a 2.x profile.
   if [[ "$(basename "$target")" =~ ^([0-9]+)\. ]] && ((BASH_REMATCH[1] < 3)); then
-    die "PhotoGIMP requires GIMP 3+, but the detected profile is $(basename "$target")"
+    log::error "PhotoGIMP requires GIMP 3+, but the detected profile is $(basename "$target")"
+    return 1
   fi
 
   log::info "GIMP config directory: ${target}"
-  extracted="$(photogimp::download)"
-  payload="$(photogimp::locate_payload "$extracted")"
+  extracted="$(photogimp::download)" || return 1
+  payload="$(photogimp::locate_payload "$extracted")" || return 1
 
-  backup="$(photogimp::backup "$target")"
+  backup="$(photogimp::backup "$target")" || return 1
   if [[ -n "$backup" ]]; then
     log::info "existing configuration backed up to ${backup}"
   fi
 
-  photogimp::apply "$payload" "$target"
-  if [[ "$kind" == native ]]; then
-    photogimp::install_desktop_files "$extracted"
-  fi
+  photogimp::apply "$payload" "$target" || return 1
+  photogimp::install_desktop_files "$extracted" "$kind"
 
   files="$(wc -l <"${target}/${PHOTOGIMP_MANIFEST}")"
   log::ok "PhotoGIMP layer installed (${files} files) into $(basename "$target")"
@@ -154,11 +197,10 @@ photogimp::install() { # <native|flatpak|snap>
 
 photogimp::uninstall() { # <native|flatpak|snap>
   local kind="$1" target
-  target="$(gimp::config_dir "$kind")"
+  target="$(gimp::config_dir "$kind")" || return 1
+  [[ -n "$target" ]] || return 1
   photogimp::remove "$target"
-  if [[ "$kind" == native ]]; then
-    photogimp::remove_desktop_files
-  fi
+  photogimp::remove_desktop_files
   log::ok "PhotoGIMP layer removed; personal files were left untouched"
   log::info "backups (if any) are in ${LAZYGIMP_STATE_DIR}/backups"
 }

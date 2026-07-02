@@ -36,6 +36,26 @@ make_fake_payload() { # <version> → echoes payload dir
   [ "$output" = "$newest" ]
 }
 
+@test "apply excludes pluginrc (machine-specific plug-in cache)" {
+  payload="$(make_fake_payload 3.0)"
+  echo "stale cache" >"${payload}/pluginrc"
+  target="${HOME}/.config/GIMP/3.2"
+
+  photogimp::apply "$payload" "$target"
+
+  [ ! -f "${target}/pluginrc" ]
+  ! grep -q "pluginrc" "${target}/.lazygimp-photogimp.manifest"
+  [ -f "${target}/gimprc" ]
+}
+
+@test "apply refuses an empty or root-level target" {
+  payload="$(make_fake_payload 3.0)"
+  run photogimp::apply "$payload" ""
+  [ "$status" -ne 0 ]
+  run photogimp::apply "$payload" "/"
+  [ "$status" -ne 0 ]
+}
+
 @test "apply copies files, writes a manifest, and preserves user files" {
   payload="$(make_fake_payload 3.0)"
   target="${HOME}/.config/GIMP/3.2"

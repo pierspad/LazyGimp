@@ -9,6 +9,7 @@
 # ---------------------------------------------------------------------------
 
 lazygimp::install_packages() {
+  as_root zypper --non-interactive refresh
   as_root zypper --non-interactive install gimp gmic-gimp
 }
 

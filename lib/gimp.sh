@@ -34,7 +34,14 @@ gimp::detect_version() { # <native|flatpak|snap>
       ;;
     flatpak)
       if have flatpak; then
-        raw="$(flatpak info "${GIMP_FLATPAK_ID}" 2>/dev/null | sed -n 's/^ *Version: *//p' || true)"
+        # `flatpak list --columns` is locale-independent, unlike the
+        # human-oriented (and translated!) `flatpak info` output.
+        raw="$(flatpak list --app --columns=application,version 2>/dev/null |
+          awk -v id="${GIMP_FLATPAK_ID}" '$1 == id {print $2}' || true)"
+        if [[ -z "$raw" ]]; then
+          raw="$(LC_ALL=C flatpak info "${GIMP_FLATPAK_ID}" 2>/dev/null |
+            sed -n 's/^ *Version: *//p' || true)"
+        fi
       fi
       ;;
     snap)
@@ -62,9 +69,20 @@ gimp::newest_config_dir() { # <base-dir>
 # Launch GIMP once, headless, so it generates its per-user configuration
 # files (config dir, plug-in folders, rc files). On a fresh system this MUST
 # happen before the PhotoGIMP layer and plug-ins are applied, otherwise
-# there is no directory to target. Quick (a few seconds) and idempotent.
+# there is no directory to target.
+#
+# Runs the child in the background with an inline progress line, a hard
+# timeout (LAZYGIMP_WARMUP_TIMEOUT, default 120 s) and an INT trap, so the
+# user always sees activity and Ctrl+C always kills it. Skipped entirely if
+# a config dir already exists.
 gimp::warm_up() { # <kind> [explicit-gimp-binary]
-  local kind="$1" bin="${2:-}" cmd=()
+  local kind="$1" bin="${2:-}" base cmd=()
+
+  base="$(gimp::config_base "$kind")"
+  if gimp::newest_config_dir "$base" >/dev/null 2>&1; then
+    return 0 # GIMP has run before — nothing to generate
+  fi
+
   case "$kind" in
     native)
       if [[ -n "$bin" ]]; then
@@ -81,9 +99,49 @@ gimp::warm_up() { # <kind> [explicit-gimp-binary]
       ;;
     *) return 0 ;;
   esac
-  log::info "launching GIMP once (headless) to generate its configuration files..."
-  if ! timeout 180 "${cmd[@]}" -i -b '(gimp-quit 0)' >/dev/null 2>&1; then
-    log::warn "headless GIMP warm-up did not complete; continuing anyway"
+
+  # -i no UI, -d skip data (brushes...), -f skip fonts (the font-cache build
+  # can take minutes on a first run), -s no splash; stdin from /dev/null so
+  # batch mode can never sit waiting for input. stderr goes to a log we can
+  # point the user at if something goes wrong.
+  local warmup_log="${XDG_STATE_HOME:-${HOME}/.local/state}/lazygimp/warmup.log"
+  mkdir -p "$(dirname "$warmup_log")"
+  "${cmd[@]}" -i -d -f -s -b '(gimp-quit 0)' </dev/null >"$warmup_log" 2>&1 &
+  local pid=$! elapsed=0 limit="${LAZYGIMP_WARMUP_TIMEOUT:-120}"
+
+  trap 'kill -TERM "$pid" 2>/dev/null; sleep 1; kill -KILL "$pid" 2>/dev/null; \
+printf "\n" >&2; log::error "interrupted"; exit 130' INT
+
+  while kill -0 "$pid" 2>/dev/null; do
+    if ((elapsed >= limit)); then
+      kill -TERM "$pid" 2>/dev/null || true
+      sleep 2
+      kill -KILL "$pid" 2>/dev/null || true
+      break
+    fi
+    printf '\r[info] first GIMP start, generating configuration... %3ds (one-time step)' \
+      "$elapsed" >&2
+    sleep 1
+    ((elapsed += 1))
+  done
+  printf '\r%*s\r' 78 '' >&2
+  trap - INT
+
+  if wait "$pid" 2>/dev/null; then
+    log::ok "GIMP configuration initialized"
+  else
+    log::warn "GIMP warm-up did not finish cleanly (details: ${warmup_log}); continuing"
+  fi
+
+  # Belt and braces: if GIMP still did not create its tree but we know the
+  # version, create the directory ourselves — GIMP happily adopts it, and
+  # the layers/plug-ins need a real path to target.
+  local ver
+  if ! gimp::newest_config_dir "$base" >/dev/null 2>&1; then
+    if ver="$(gimp::detect_version "$kind")"; then
+      mkdir -p "${base}/${ver}"
+      log::info "created ${base}/${ver} (GIMP will adopt it on first launch)"
+    fi
   fi
 }
 

@@ -9,7 +9,9 @@
 # ---------------------------------------------------------------------------
 
 lazygimp::install_packages() {
-  as_root pacman -S --needed --noconfirm gimp gimp-plugin-gmic
+  # Full -Syu: never install against a stale database (partial upgrades are
+  # unsupported on Arch and stale DBs cause 404s from rotated mirrors).
+  as_root pacman -Syu --needed --noconfirm gimp gimp-plugin-gmic
 }
 
 lazygimp::remove_packages() {

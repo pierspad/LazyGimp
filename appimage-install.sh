@@ -119,8 +119,13 @@ main() {
   dest="${dest_dir}/${filename}"
 
   mkdir -p "$dest_dir"
-  download "$url" "$dest"
-  sha256_verify "$dest" "$sha256"
+  # Idempotent: if this exact AppImage is already present and intact, reuse it.
+  if [[ -f "$dest" ]] && [[ "$(sha256sum "$dest" | awk '{print $1}')" == "$sha256" ]]; then
+    log::info "GIMP ${version} AppImage already present and verified — skipping download"
+  else
+    download "$url" "$dest"
+    sha256_verify "$dest" "$sha256"
+  fi
   chmod +x "$dest"
   ln -sf "$filename" "${dest_dir}/GIMP.AppImage"
   log::ok "GIMP ${version} AppImage installed at ${dest} (symlink: GIMP.AppImage)"
@@ -129,9 +134,10 @@ main() {
   gimp::warm_up native "$dest"
 
   if [[ "$SKIP_PHOTOGIMP" != 1 ]]; then
-    # The AppImage is not on PATH, but we know exactly which version we
-    # just downloaded — pass it as a hint to the config-dir resolver.
-    if ! (LAZYGIMP_GIMP_VERSION_HINT="$version" photogimp::install native); then
+    # The AppImage is not on PATH: hint the exact version to the config-dir
+    # resolver and make the desktop entry launch the AppImage itself.
+    if ! (LAZYGIMP_GIMP_VERSION_HINT="$version" \
+      LAZYGIMP_GIMP_COMMAND="${dest_dir}/GIMP.AppImage" photogimp::install native); then
       log::warn "PhotoGIMP layer not applied (see message above); GIMP itself is installed"
     fi
   fi

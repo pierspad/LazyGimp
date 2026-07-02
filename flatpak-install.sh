@@ -117,17 +117,27 @@ main() {
   fi
 
   log::info "installing ${GIMP_FLATPAK_ID} from flathub"
-  flatpak install -y flathub "${GIMP_FLATPAK_ID}"
+  flatpak install -y --noninteractive flathub "${GIMP_FLATPAK_ID}"
 
-  # Plug-ins ship as flatpak *extensions*; flatpak resolves the branch
-  # matching the installed GIMP automatically.
-  local ext
-  for ext in "${GMIC_FLATPAK_ID}" "${RESYNTH_FLATPAK_ID}"; do
-    if ! flatpak install -y flathub "$ext"; then
-      log::warn "${ext##*.} flatpak extension not available for this GIMP branch yet"
-      log::warn "install it manually later: flatpak install flathub ${ext}"
-    fi
-  done
+  # Plug-ins ship as flatpak *extensions* with one branch per GIMP major
+  # (2-40, 2-3.36, 3, ...). A bare ref is ambiguous and makes flatpak ask —
+  # a lazy installer never asks: pin the branch of the GIMP just installed,
+  # and pass --noninteractive so flatpak fails instead of ever prompting.
+  local ext branch
+  branch="$(gimp::detect_version flatpak || true)"
+  branch="${branch%%.*}" # extension branch = GIMP major ("3")
+  if [[ -z "$branch" ]]; then
+    log::warn "cannot determine the installed GIMP version — skipping the plug-in"
+    log::warn "extensions; install them later with, e.g.:"
+    log::warn "  flatpak install flathub ${GMIC_FLATPAK_ID}//3"
+  else
+    for ext in "${GMIC_FLATPAK_ID}" "${RESYNTH_FLATPAK_ID}"; do
+      if ! flatpak install -y --noninteractive flathub "${ext}//${branch}"; then
+        log::warn "${ext##*.} flatpak extension not available for GIMP ${branch} yet"
+        log::warn "install it manually later: flatpak install flathub ${ext}//${branch}"
+      fi
+    done
+  fi
 
   # GIMP must run once to generate its config tree before we layer on it.
   gimp::warm_up flatpak

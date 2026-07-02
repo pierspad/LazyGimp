@@ -55,6 +55,8 @@ Options:
                        e.g. if you already manage your own PyTorch/SAM setup
   --kind <k>           target GIMP install kind: native | flatpak
                        (default: auto-detected)
+  --sam-info           print the two values the Segment Anything dialog asks
+                       for on its first run, then exit
   --uninstall-all      remove every plug-in installed by LazyGimp
                        (and the SAM backend, if present)
   -h, --help           show this help
@@ -64,20 +66,19 @@ GPU acceleration: LAZYGIMP_TORCH_INDEX_URL=<torch wheel index> (default: CPU whe
 EOF
 }
 
-# Which GIMP should receive the plug-ins? Prefer whichever GIMP is actually
-# detectable, native first; fail with guidance when neither is.
-detect_kind() {
-  if gimp::detect_version native >/dev/null 2>&1; then
-    printf 'native\n'
-  elif gimp::detect_version flatpak >/dev/null 2>&1; then
-    printf 'flatpak\n'
-  elif gimp::newest_config_dir "$(gimp::config_base native)" >/dev/null 2>&1; then
-    printf 'native\n'
-  elif gimp::newest_config_dir "$(gimp::config_base flatpak)" >/dev/null 2>&1; then
-    printf 'flatpak\n'
-  else
-    return 1
+# Which GIMPs should receive the plug-ins? Every install that is actually
+# present (a user experimenting with both native and flatpak gets the
+# plug-ins in both — whichever GIMP they open, everything is there).
+detect_kinds() {
+  local kinds=()
+  gimp::detect_version native >/dev/null 2>&1 && kinds+=(native)
+  gimp::detect_version flatpak >/dev/null 2>&1 && kinds+=(flatpak)
+  if ((${#kinds[@]} == 0)); then
+    gimp::newest_config_dir "$(gimp::config_base native)" >/dev/null 2>&1 && kinds+=(native)
+    gimp::newest_config_dir "$(gimp::config_base flatpak)" >/dev/null 2>&1 && kinds+=(flatpak)
   fi
+  ((${#kinds[@]} > 0)) || return 1
+  printf '%s\n' "${kinds[@]}"
 }
 
 KIND=""
@@ -94,6 +95,16 @@ while (($#)); do
       shift
       ;;
     --kind=*) KIND="${1#*=}" ;;
+    --sam-info)
+      cat <<EOF
+Segment Anything — first-run dialog values (GIMP remembers them afterwards):
+
+  Python3 Path:      $(segany::python)
+  Model Checkpoint:  $(segany::checkpoint)
+  Model Type:        Auto (inferred from the checkpoint filename)
+EOF
+      exit 0
+      ;;
     --uninstall-all)
       plugins::uninstall_all
       segany::remove_backend
@@ -115,19 +126,29 @@ main() {
     WANT_SEGANY=1
   fi
 
-  if [[ -z "$KIND" ]]; then
-    KIND="$(detect_kind)" ||
+  local kinds=()
+  if [[ -n "$KIND" ]]; then
+    kinds=("$KIND")
+  else
+    mapfile -t kinds < <(detect_kinds || true)
+    ((${#kinds[@]} > 0)) ||
       die "no GIMP installation detected — install GIMP first (./install.sh), or pass --kind"
   fi
-  log::info "target GIMP install kind: ${KIND}"
+  log::info "target GIMP install kind(s): ${kinds[*]}"
 
-  if ((WANT_BATCHER)); then
-    plugins::install_batcher "$KIND"
-  fi
+  local kind
+  for kind in "${kinds[@]}"; do
+    if ((WANT_BATCHER)); then
+      plugins::install_batcher "$kind"
+    fi
+    if ((WANT_SEGANY)); then
+      plugins::install_segany "$kind"
+    fi
+  done
+
   if ((WANT_SEGANY)); then
-    plugins::install_segany "$KIND"
     if ((SAM_BACKEND)); then
-      segany::install_backend "$KIND"
+      segany::install_backend "${kinds[0]}"
     else
       log::warn "SAM backend skipped (--no-sam-backend) — the plug-in needs one to run:"
       log::warn "see https://github.com/${SEGANY_REPO}#readme"

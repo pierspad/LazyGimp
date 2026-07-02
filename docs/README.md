@@ -70,6 +70,32 @@ curl -fsSL https://raw.githubusercontent.com/pierspad/LazyGimp/main/uninstall.sh
 
 Detects what LazyGimp installed (native packages, flatpak, AppImage, PhotoGIMP layer, plug-ins), lists it, and removes what you confirm — so you can reinstall clean with a different method. Selective removal: `--method photogimp`, `--method flatpak`, etc. Your personal GIMP files are never deleted; full pre-install backups live in `~/.local/state/lazygimp/backups/` (removed only with `--purge`).
 
+## FAQ / Troubleshooting
+
+**The "PhotoGIMP" menu entry does nothing.** Fixed in current LazyGimp: upstream PhotoGIMP hardcodes a flatpak launch command in its menu entry, which silently fails if your GIMP came from the package manager or an AppImage. LazyGimp now retargets the entry to the GIMP it actually installed — re-run the installer if you hit this.
+
+**I see two GIMP entries in the menu.** LazyGimp hides the stock duplicate where it can; after a re-run you should see a single "PhotoGIMP" entry. Log out/in (or run `update-desktop-database`) if your menu caches entries.
+
+**G'MIC appears in Filters but is greyed out.** That's GIMP, not a bug: G'MIC operates on an image, so it stays disabled until you open one (`File → Open` or `Ctrl+N`). Same for most filters.
+
+**Where is Segment Anything, and what goes in its dialog?** Open an image first, then `Image → Segment Anything Layers`. On the very first run fill in (GIMP remembers them afterwards):
+
+| Field | Value |
+|---|---|
+| Python3 Path | `~/.local/share/lazygimp/segany/venv/bin/python3` |
+| Model Checkpoint | `~/.local/share/lazygimp/segany/models/sam_vit_b_01ec64.pth` |
+| Model Type | `Auto` (inferred from the checkpoint filename) |
+
+Print them anytime with `./plugins-install.sh --sam-info` (also saved in `~/.local/share/lazygimp/segany/INFO.txt`). Use the file-picker button next to each field and paste the path. With the flatpak GIMP the sandbox may block the external Python backend; prefer the package-manager or AppImage GIMP for this plug-in.
+
+**A filter shows up in the menu but I never installed it (greyed-out G'MIC).** Old LazyGimp versions copied PhotoGIMP's `pluginrc` — a plug-in registry *cache* from the packager's machine — producing ghost menu entries. Current LazyGimp excludes it; re-run the installer and restart GIMP, and the menu will reflect what is actually installed.
+
+## Re-running & updating
+
+Every script is **idempotent** — re-running is the supported way to update or repair. Whatever is already present and valid is kept (native packages via the package manager, an intact AppImage of the same version, the SAM virtualenv and its ~375 MB checkpoint are never re-downloaded); whatever is missing is added; whatever LazyGimp manages (PhotoGIMP layer, plug-in folders) is **brutally overwritten** with the current version — after the usual timestamped backup of your GIMP configuration. Your personal files (brushes, scripts, your own plug-ins) are never touched.
+
+**"first GIMP start, generating configuration..." — is it stuck?** No: GIMP's first start generates its configuration tree; the installer shows a live seconds counter, gives up safely after 2 minutes, and Ctrl+C always aborts it cleanly.
+
 ## Contributing
 
 Commits follow [Conventional Commits](https://www.conventionalcommits.org): `feat:` (minor), `fix:`/`perf:`/`refactor:` (patch), `docs:`/`chore:` (no release), `BREAKING CHANGE:` (major). Every push to `main` is released automatically — version bump, changelog, tag, GitHub release and backmerge to `dev` are handled by [semantic-release](../.releaserc). CI gates every PR with ShellCheck, bats tests, actionlint and PSScriptAnalyzer.

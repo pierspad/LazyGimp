@@ -131,6 +131,12 @@ from the official repository) — install git and re-run"
   log::info "first-run values (also saved to ${info}):"
   log::info "  Python3 Path:    $(segany::python)"
   log::info "  Checkpoint Path: $(segany::checkpoint)"
+
+  if [[ "$kind" == flatpak ]]; then
+    log::warn "note: the flatpak sandbox may block GIMP from executing the host"
+    log::warn "Python backend — for Segment Anything the package-manager or"
+    log::warn "AppImage GIMP is the more reliable choice"
+  fi
 }
 
 segany::remove_backend() {
