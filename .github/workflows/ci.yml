@@ -1,0 +1,73 @@
+# ---------------------------------------------------------------------------
+# CI — every pull request (and push to main/dev) must pass:
+#   * ShellCheck + bash syntax check on every shell script
+#   * bats unit tests for the version-detection and PhotoGIMP-layer logic
+#   * actionlint on the workflows themselves
+#   * PSScriptAnalyzer on the Windows installer
+# ---------------------------------------------------------------------------
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  shell:
+    name: ShellCheck & syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: sudo apt-get update -q && sudo apt-get install -y shellcheck
+
+      - name: Bash syntax check
+        run: |
+          find . -name '*.sh' -not -path './node_modules/*' -print0 |
+            xargs -0 -n1 bash -n
+
+      - name: ShellCheck
+        run: |
+          find . -name '*.sh' -not -path './node_modules/*' -print0 |
+            xargs -0 shellcheck --external-sources --source-path=. --severity=style
+
+  tests:
+    name: Unit tests (bats)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install bats
+        run: sudo apt-get update -q && sudo apt-get install -y bats
+
+      - name: Run tests
+        run: bats tests
+
+  workflows:
+    name: Lint workflows (actionlint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: actionlint
+        uses: docker://rhysd/actionlint:latest
+        with:
+          args: -color
+
+  powershell:
+    name: Lint Windows installer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          $results = Invoke-ScriptAnalyzer -Path windows -Recurse -Severity Warning
+          $results | Format-Table -AutoSize
+          if ($results | Where-Object Severity -eq 'Error') { exit 1 }

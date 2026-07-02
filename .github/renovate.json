@@ -1,0 +1,31 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    ":semanticCommitTypeAll(chore)"
+  ],
+  "labels": ["dependencies"],
+  "packageRules": [
+    {
+      "description": "Group all GitHub Actions bumps into a single PR",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions"
+    },
+    {
+      "description": "PhotoGIMP bumps change what users get installed — release them as fixes",
+      "matchDepNames": ["Diolinux/PhotoGIMP"],
+      "semanticCommitType": "fix"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Track upstream release tags pinned in shell config and the Windows installer",
+      "fileMatch": ["^config/versions\\.conf$", "^windows/install-lazygimp\\.ps1$"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-]+) depName=(?<depName>\\S+)\\s*\\n\\s*\\$?\\w+\\s*=\\s*[\"'](?<currentValue>[^\"']+)[\"']"
+      ]
+    }
+  ]
+}

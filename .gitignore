@@ -1,0 +1,9 @@
+# release pipeline
+node_modules/
+dist/
+
+# editors / OS noise
+.idea/
+.vscode/
+*.swp
+.DS_Store

@@ -1,0 +1,14 @@
+{
+  "name": "lazygimp-release",
+  "private": true,
+  "description": "Dev-only dependencies for the LazyGimp release pipeline (semantic-release). The installer itself is pure bash/PowerShell and needs none of this.",
+  "license": "GPL-3.0-only",
+  "devDependencies": {
+    "@saithodev/semantic-release-backmerge": "^4.0.1",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/exec": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "conventional-changelog-conventionalcommits": "^8.0.0",
+    "semantic-release": "^24.2.0"
+  }
+}
