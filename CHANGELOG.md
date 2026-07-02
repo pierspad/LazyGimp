@@ -1,3 +1,9 @@
+## [1.1.0](https://github.com/pierspad/LazyGimp/compare/v1.0.1...v1.1.0) (2026-07-02)
+
+### ✨ Features
+
+* unattended per-method installers with headless warm-up and downloadable assets ([9aa7c7e](https://github.com/pierspad/LazyGimp/commit/9aa7c7ea0a68a88ae11629d8fb66290c429ab93d))
+
 ## [1.0.1](https://github.com/pierspad/LazyGimp/compare/v1.0.0...v1.0.1) (2026-07-02)
 
 ### 🐛 Bug Fixes
