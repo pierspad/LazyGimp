@@ -20,11 +20,24 @@ lazygimp::install_packages() {
   fi
 }
 
+lazygimp::remove_packages() {
+  local pkgs=() p
+  for p in gimp-gmic gimp; do
+    dpkg -s "$p" >/dev/null 2>&1 && pkgs+=("$p")
+  done
+  if ((${#pkgs[@]})); then
+    as_root apt-get remove -y "${pkgs[@]}"
+    as_root apt-get autoremove -y
+  else
+    log::info "no LazyGimp packages installed via apt"
+  fi
+}
+
 lazygimp::post_install_notes() {
   local candidate
   candidate="$(apt-cache policy gimp 2>/dev/null | sed -n 's/^ *Candidate: *//p')"
   if [[ "$candidate" == 2.* ]]; then
     log::warn "this release ships GIMP ${candidate}, but PhotoGIMP requires GIMP 3+"
-    log::warn "use './install.sh --method flatpak' to get current GIMP with automatic updates"
+    log::warn "use './install_with_flatpak.sh' to get current GIMP with automatic updates"
   fi
 }

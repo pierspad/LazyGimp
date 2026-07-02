@@ -11,3 +11,15 @@
 lazygimp::install_packages() {
   as_root dnf install -y gimp gmic-gimp
 }
+
+lazygimp::remove_packages() {
+  local pkgs=() p
+  for p in gmic-gimp gimp; do
+    rpm -q "$p" >/dev/null 2>&1 && pkgs+=("$p")
+  done
+  if ((${#pkgs[@]})); then
+    as_root dnf remove -y "${pkgs[@]}"
+  else
+    log::info "no LazyGimp packages installed via dnf"
+  fi
+}

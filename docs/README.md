@@ -12,23 +12,19 @@
 curl -fsSL https://raw.githubusercontent.com/pierspad/LazyGimp/main/install.sh | bash
 ```
 
-That's it. The installer picks the best method for your system (Flatpak when available, otherwise your distro's package manager, otherwise the official AppImage), installs GIMP and G'MIC, and applies the PhotoGIMP layout — with a full backup of any existing configuration first.
-
-Prefer a specific method?
+`install.sh` is a pure orchestrator: it shows an interactive menu of the available methods and **downloads nothing before you choose**. Each method is also a standalone script you can run directly:
 
 ```bash
-./install.sh --method flatpak            # Flathub GIMP + G'MIC extension (recommended)
-./install.sh --method package-manager    # native packages, updated by your distro
-./install.sh --method appimage           # official gimp.org AppImage, portable
+./install_with_package_manager.sh   # native distro packages, updated by your system [default]
+./install_with_flatpak.sh           # Flathub GIMP + G'MIC extension, auto-updated
+./install_with_appimage.sh          # official gimp.org AppImage, single portable file
 ```
 
-### Native packages only
+Non-interactive? `./install.sh --method package-manager` (or `flatpak` / `appimage` / `auto`).
 
-```bash
-./install_with_package_manager.sh
-```
+**Which method should I pick?** On rolling or fast-moving distros (Arch, Fedora, openSUSE Tumbleweed) the package manager is the best choice: native, integrated, current. On Debian stable or Ubuntu LTS the repos ship an old GIMP — there the flatpak is the honest recommendation, and the installer will tell you exactly that if it detects GIMP 2.x.
 
-Supported out of the box: **Arch**, **Fedora**, **Debian**, **Ubuntu**, **openSUSE** — and their derivatives (Manjaro, EndeavourOS, Linux Mint, Pop!\_OS, Nobara, ...) via `ID_LIKE` matching. Adding a distro is one small file in [`shell_scripts/`](shell_scripts/).
+Supported out of the box: **Arch**, **Fedora**, **Debian**, **Ubuntu**, **openSUSE** — and their derivatives (Manjaro, EndeavourOS, Linux Mint, Pop!\_OS, Nobara, ...) via `ID_LIKE` matching. Adding a distro is one small file in [`shell_scripts/`](../shell_scripts/).
 
 ## Quick start (Windows)
 
@@ -44,30 +40,61 @@ It downloads the official GIMP installer (checksum-verified against gimp.org's o
 
 * **GIMP** — always the newest stable, from official channels only (Flathub, your distro, gimp.org). Never rebuilt or repackaged by us.
 * **PhotoGIMP** — Photoshop-style layout, shortcuts and defaults, applied as a *configuration layer*: your existing settings are backed up first, every installed file is tracked in a manifest, and your brushes/scripts/plug-ins are never touched.
-* **G'MIC** — 500+ filters, installed from your package manager or as the Flathub extension where available.
+* **G'MIC** — 500+ filters, from your package manager or as the Flathub extension where available.
 
-Works with any GIMP 3.x — including future releases. Nothing in LazyGimp hardcodes a GIMP version: the right config directory (`3.0`, `3.2`, `3.4`, ...) is detected at runtime. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how and why.
+Works with any GIMP 3.x — including future releases. Nothing in LazyGimp hardcodes a GIMP version: the right config directory (`3.0`, `3.2`, `3.4`, ...) is detected at runtime. See [ARCHITECTURE.md](ARCHITECTURE.md) for how and why.
+
+## Optional plug-ins
+
+```bash
+./install_plugins.sh
+```
+
+| Plug-in | What it adds | Notes |
+|---|---|---|
+| [Batcher](https://github.com/kamilburda/batcher) | Batch processing, convert images, **export layers as separate files** | Just works after a GIMP restart |
+| [Segment Anything](https://github.com/Shriinivas/gimpsegany) | AI subject selection via Meta SAM/SAM2 | **Experimental** — the plug-in is installed for you, but it needs a separate Python backend (PyTorch + model checkpoints, several GB) you set up once following [upstream's guide](https://github.com/Shriinivas/gimpsegany#readme) |
+
+Both are installed into the plug-ins folder of whichever GIMP you have (native or flatpak, auto-detected) and tracked for clean removal.
+
+## Fonts and the flatpak sandbox
+
+Recent flatpak already exposes your system **and** user fonts to GIMP, so most people need nothing. If a *custom fontconfig setup* of yours is not picked up, opt in explicitly:
+
+```bash
+./install_with_flatpak.sh --font-access
+```
+
+This grants the sandbox read access to `~/.local/share/fonts` and `~/.config/fontconfig`, tells you it did, records the override, and `./uninstall.sh` reverts it. It is never applied silently.
 
 ## Undo / uninstall
 
 ```bash
-./install.sh --uninstall-photogimp            # native GIMP
-./install.sh --uninstall-photogimp flatpak    # flatpak GIMP
+./uninstall.sh
 ```
 
-Removes only the files the layer installed (tracked in its manifest) and leaves your personal files alone. Full pre-install backups live in `~/.local/state/lazygimp/backups/`.
+Detects what LazyGimp installed (native packages, flatpak, AppImage, PhotoGIMP layer, plug-ins), lists it, and removes what you confirm — so you can reinstall clean with a different method. Selective removal: `--method photogimp`, `--method flatpak`, etc. Your personal GIMP files are never deleted; full pre-install backups live in `~/.local/state/lazygimp/backups/` (removed only with `--purge`).
 
 ## Contributing
 
-Commits follow [Conventional Commits](https://www.conventionalcommits.org): `feat:` (minor), `fix:`/`perf:`/`refactor:` (patch), `docs:`/`chore:` (no release), `BREAKING CHANGE:` (major). Every push to `main` is released automatically — version bump, changelog, tag, GitHub release and backmerge to `dev` are all handled by [semantic-release](.releaserc). CI gates every PR with ShellCheck, bats tests, actionlint and PSScriptAnalyzer.
+Commits follow [Conventional Commits](https://www.conventionalcommits.org): `feat:` (minor), `fix:`/`perf:`/`refactor:` (patch), `docs:`/`chore:` (no release), `BREAKING CHANGE:` (major). Every push to `main` is released automatically — version bump, changelog, tag, GitHub release and backmerge to `dev` are handled by [semantic-release](../.releaserc). CI gates every PR with ShellCheck, bats tests, actionlint and PSScriptAnalyzer.
 
-To support a new distribution, add `shell_scripts/<id>.sh` defining `lazygimp::install_packages` — see any existing file for the contract.
+To support a new distribution, add `shell_scripts/<id>.sh` defining `lazygimp::install_packages` and `lazygimp::remove_packages` — see any existing file for the contract.
 
-## Credits
+## Credits & licenses
 
-* [GIMP](https://www.gimp.org) — the GNU Image Manipulation Program
-* [Diolinux/PhotoGIMP](https://github.com/Diolinux/PhotoGIMP) — the patch this project exists to deliver
-* [G'MIC](https://gmic.eu) — GREYC's Magic for Image Computing
+LazyGimp is a thin installer/configurator: it **does not bundle or redistribute** any of these projects — it downloads them from their official channels at install time. All credit goes to their authors:
+
+| Project | Author(s) | What LazyGimp uses it for | License |
+|---|---|---|---|
+| [GIMP](https://www.gimp.org) | The GIMP team | The image editor itself | [GPL-3.0-or-later](https://gitlab.gnome.org/GNOME/gimp/-/blob/master/COPYING) |
+| [PhotoGIMP](https://github.com/Diolinux/PhotoGIMP) | Diolinux | Photoshop-style configuration layer | [GPL-3.0](https://github.com/Diolinux/PhotoGIMP/blob/master/LICENSE) |
+| [G'MIC](https://gmic.eu) | GREYC / D. Tschumperlé et al. | 500+ image filters | [CeCILL 2.1 / CeCILL-C](https://gmic.eu/download.html) |
+| [Batcher](https://github.com/kamilburda/batcher) | Kamil Burda | Batch processing & layer export | [BSD-3-Clause](https://github.com/kamilburda/batcher/blob/main/LICENSE) |
+| [gimpsegany](https://github.com/Shriinivas/gimpsegany) | Shriinivas | Segment Anything integration | [AGPL-3.0](https://github.com/Shriinivas/gimpsegany/blob/main/LICENSE) |
+| [Segment Anything](https://github.com/facebookresearch/segment-anything) | Meta AI | AI models behind gimpsegany | [Apache-2.0](https://github.com/facebookresearch/segment-anything/blob/main/LICENSE) |
+
+License compatibility: LazyGimp itself is GPL-3.0. Since we only *invoke and download* the projects above (mere aggregation, no derived work), no license conflict can arise. Even in the strictest reading, every license in the table is GPL-3.0-compatible: GPL-3.0 (same), BSD-3-Clause and Apache-2.0 (permissive, one-way compatible), CeCILL 2.1 (explicitly GPL-compatible, art. 5.3.4), AGPL-3.0 (linkable with GPL-3.0 per GPLv3 §13).
 
 ## License
 

@@ -11,3 +11,15 @@
 lazygimp::install_packages() {
   as_root pacman -S --needed --noconfirm gimp gimp-plugin-gmic
 }
+
+lazygimp::remove_packages() {
+  local pkgs=() p
+  for p in gimp-plugin-gmic gimp; do
+    pacman -Qi "$p" >/dev/null 2>&1 && pkgs+=("$p")
+  done
+  if ((${#pkgs[@]})); then
+    as_root pacman -Rns --noconfirm "${pkgs[@]}"
+  else
+    log::info "no LazyGimp packages installed via pacman"
+  fi
+}

@@ -16,15 +16,19 @@ This keeps the whole project a few hundred lines of shell and PowerShell — sma
 ## Repository layout
 
 ```
-install.sh                       entry point: picks/uses a method (flatpak, pm, appimage)
-install_with_package_manager.sh  native-packages path: detect distro → dispatch
+install.sh                       ORCHESTRATOR ONLY: interactive menu → dispatch;
+                                 downloads nothing before the user chooses
+install_with_package_manager.sh  method: native distro packages (default)
+install_with_flatpak.sh          method: Flathub GIMP + G'MIC extension
+install_with_appimage.sh         method: official gimp.org AppImage
+install_plugins.sh               optional plug-ins (Batcher, Segment Anything)
+uninstall.sh                     detect-and-confirm removal of everything we installed
 shell_scripts/<distro>.sh        per-distro package logic ONLY (one file per family)
 lib/
   common.sh                      logging, root escalation, downloads, distro detection
   gimp.sh                        GIMP version + config-dir resolution (version-agnostic)
   photogimp.sh                   the PhotoGIMP configuration layer (backup + manifest)
-  methods/flatpak.sh             Flathub method
-  methods/appimage.sh            official-AppImage method
+  plugins.sh                     the optional plug-ins layer (state-tracked folders)
 config/versions.conf             every pinned version/URL, in one place (Renovate-managed)
 windows/install-lazygimp.ps1     Windows path (same design, in PowerShell)
 scripts/build_release_assets.sh  builds dist/ for a release
@@ -33,7 +37,9 @@ tests/*.bats                     unit tests for the resolution and layer logic
 .releaserc, package.json         semantic-release configuration
 ```
 
-Extending to a new distribution means adding one `shell_scripts/<id>.sh` file that defines `lazygimp::install_packages` (and optionally `lazygimp::post_install_notes`). The dispatcher matches `/etc/os-release` `ID` first, then every entry of `ID_LIKE`, so derivatives (Manjaro→arch, Mint→ubuntu, Nobara→fedora) work without their own file.
+One script per method, plus a thin orchestrator. Users who know what they want run the method script directly and get its focused `--help`; `install.sh` exists for the `curl | bash` one-liner and for people who want to be guided. The menu runs on `/dev/tty`, so it works even when the script itself arrives through a pipe; with no terminal attached, an explicit `--method` is required — LazyGimp never auto-picks a download channel silently.
+
+Extending to a new distribution means adding one `shell_scripts/<id>.sh` file that defines `lazygimp::install_packages` and `lazygimp::remove_packages` (and optionally `lazygimp::post_install_notes`). The dispatcher matches `/etc/os-release` `ID` first, then every entry of `ID_LIKE`, so derivatives (Manjaro→arch, Mint→ubuntu, Nobara→fedora) work without their own file.
 
 ## The PhotoGIMP problem: hardcoded `3.0`
 
@@ -56,6 +62,18 @@ Blindly replacing the config directory would destroy user brushes, scripts and p
 * refuses to target a GIMP 2.x profile (PhotoGIMP is a GIMP 3+ patch).
 
 The manifest also makes upgrades idempotent: re-running the installer rewrites the layer without accumulating stale files.
+
+### The same pattern, reused: optional plug-ins
+
+`lib/plugins.sh` applies the identical design to optional plug-ins (Batcher, Segment Anything): resolve the real `plug-ins/` directory at runtime, install each plug-in into its own folder, record every folder in a state manifest, remove exactly those folders on uninstall. Because a plug-in folder is entirely ours, removal is a safe `rm -rf` of tracked paths — user plug-ins are untouched. Segment Anything is marked experimental: the GIMP-side plug-in is tiny and safe to install, but it requires a PyTorch/SAM backend (several GB) the user must set up once; we say so loudly instead of pretending it "just works".
+
+### Uninstall as a first-class citizen
+
+`uninstall.sh` closes the loop: it *detects* what is actually present (native packages, flatpak, AppImage files, PhotoGIMP manifests, plug-in manifests), lists it, and removes what the user confirms — enabling a clean switch between methods. Ordering matters: configuration layers are removed before the GIMP that anchors their config-dir detection. Package removal is delegated to `lazygimp::remove_packages` in the same per-distro files that install them, so the knowledge never spreads.
+
+### Flatpak fonts: opt-in, never silent
+
+A common complaint is that the GIMP flatpak "can't see user fonts". On current flatpak this is mostly outdated — system and user fonts are exposed to the sandbox by default; what may genuinely be missing is a *custom fontconfig configuration*. We therefore ship `--font-access` on the flatpak installer: it applies `flatpak override --user --filesystem=~/.local/share/fonts:ro --filesystem=xdg-config/fontconfig:ro`, explains what it did, records the exact overrides in the state dir, and `uninstall.sh` reverts precisely those. Widening a sandbox behind the user's back is not something an installer should ever do, so there is no automatic default.
 
 ## Install methods and their trade-offs
 
@@ -93,7 +111,7 @@ The bundle at a stable URL is what makes the one-liner work forever:
 
 Every PR runs: `bash -n` + ShellCheck (`--severity=style`, sources followed) on all scripts, bats unit tests on the resolution/layer logic, actionlint on the workflows, and PSScriptAnalyzer on the Windows script.
 
-Renovate keeps three things current with zero manual work: GitHub Actions versions, the semantic-release toolchain in `package.json`, and — via a regex custom manager — the `PHOTOGIMP_RELEASE_TAG` pinned in `config/versions.conf` and `windows/install-lazygimp.ps1`. A PhotoGIMP bump lands as a `fix:` PR, so merging it automatically publishes a release that ships the new payload. GIMP itself is intentionally *not* pinned anywhere: every method resolves the newest stable at install time.
+Renovate keeps three things current with zero manual work: GitHub Actions versions, the semantic-release toolchain in `package.json`, and — via a regex custom manager — every upstream tag pinned in `config/versions.conf` (PhotoGIMP, Batcher, gimpsegany) and in `windows/install-lazygimp.ps1`. A PhotoGIMP bump lands as a `fix:` PR, so merging it automatically publishes a release that ships the new payload. GIMP itself is intentionally *not* pinned anywhere: every method resolves the newest stable at install time.
 
 ## Testing philosophy
 

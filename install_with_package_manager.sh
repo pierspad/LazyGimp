@@ -31,7 +31,7 @@ Supported distribution families: $(find "${SCRIPT_DIR}/shell_scripts" -name '*.s
 EOF
 }
 
-SKIP_PHOTOGIMP=0
+SKIP_PHOTOGIMP="${LAZYGIMP_SKIP_PHOTOGIMP:-0}"
 while (($#)); do
   case "$1" in
     --skip-photogimp) SKIP_PHOTOGIMP=1 ;;
@@ -69,11 +69,16 @@ PhotoGIMP layer must land in *your* home, not root's"
     lazygimp::post_install_notes
   fi
 
-  if ((!SKIP_PHOTOGIMP)); then
-    photogimp::install native
+  if [[ "$SKIP_PHOTOGIMP" != 1 ]]; then
+    # Run in a subshell so a refusal (e.g. distro ships GIMP 2.x) degrades
+    # to a warning instead of aborting after packages were installed.
+    if ! (photogimp::install native); then
+      log::warn "PhotoGIMP layer not applied (see message above); GIMP itself is installed"
+    fi
   fi
 
   log::ok "all done — launch GIMP and enjoy"
+  log::info "optional plug-ins (Batcher, Segment Anything): ./install_plugins.sh"
 }
 
 main

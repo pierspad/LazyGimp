@@ -89,16 +89,40 @@ photogimp::remove() { # <target-dir>
 }
 
 # Desktop entry and icons shipped by PhotoGIMP (native installs only).
+# Every installed file is recorded in a manifest under the state dir, so
+# photogimp::remove_desktop_files can undo this cleanly.
 photogimp::install_desktop_files() { # <extracted-dir>
-  local root="$1" share
+  local root="$1" share manifest file rel
   share="$(find "$root" -type d -path '*/.local/share' 2>/dev/null | head -n1)"
   [[ -n "$share" ]] || return 0
-  mkdir -p "${HOME}/.local/share"
-  cp -a "${share}/." "${HOME}/.local/share/"
+
+  manifest="${LAZYGIMP_STATE_DIR}/desktop-files.manifest"
+  mkdir -p "${LAZYGIMP_STATE_DIR}"
+  : >"$manifest"
+
+  while IFS= read -r -d '' file; do
+    rel="${file#"${share}"/}"
+    install -D -m 0644 "$file" "${HOME}/.local/share/${rel}"
+    printf '%s\n' "${HOME}/.local/share/${rel}" >>"$manifest"
+  done < <(find "$share" -type f -print0)
+
   if have update-desktop-database; then
     update-desktop-database "${HOME}/.local/share/applications" 2>/dev/null || true
   fi
   log::info "PhotoGIMP desktop entry and icons installed"
+}
+
+# Undo photogimp::install_desktop_files using its manifest.
+photogimp::remove_desktop_files() {
+  local manifest="${LAZYGIMP_STATE_DIR}/desktop-files.manifest" file
+  [[ -f "$manifest" ]] || return 0
+  while IFS= read -r file; do
+    [[ -n "$file" ]] && rm -f -- "$file"
+  done <"$manifest"
+  rm -f -- "$manifest"
+  if have update-desktop-database; then
+    update-desktop-database "${HOME}/.local/share/applications" 2>/dev/null || true
+  fi
 }
 
 photogimp::install() { # <native|flatpak|snap>
@@ -132,6 +156,9 @@ photogimp::uninstall() { # <native|flatpak|snap>
   local kind="$1" target
   target="$(gimp::config_dir "$kind")"
   photogimp::remove "$target"
+  if [[ "$kind" == native ]]; then
+    photogimp::remove_desktop_files
+  fi
   log::ok "PhotoGIMP layer removed; personal files were left untouched"
   log::info "backups (if any) are in ${LAZYGIMP_STATE_DIR}/backups"
 }

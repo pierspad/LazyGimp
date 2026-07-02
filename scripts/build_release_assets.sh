@@ -20,22 +20,44 @@ DIST="${ROOT}/dist"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 
+BUNDLE="${STAGE}/lazygimp"
 rm -rf "$DIST"
-mkdir -p "$DIST" "${STAGE}/lazygimp"
+mkdir -p "$DIST" "$BUNDLE"
 
+# Copy the first existing candidate; fail loudly listing what was tried.
+copy_first() { # <dest-name> <candidate>...
+  local dest="$1" candidate
+  shift
+  for candidate in "$@"; do
+    if [[ -e "${ROOT}/${candidate}" ]]; then
+      cp -a "${ROOT}/${candidate}" "${BUNDLE}/${dest}"
+      return 0
+    fi
+  done
+  echo "error: none of the candidates for '${dest}' exist: $*" >&2
+  exit 1
+}
+
+# Everything the installer needs at runtime.
 cp -a \
   "${ROOT}/install.sh" \
   "${ROOT}/install_with_package_manager.sh" \
+  "${ROOT}/install_with_flatpak.sh" \
+  "${ROOT}/install_with_appimage.sh" \
+  "${ROOT}/install_plugins.sh" \
+  "${ROOT}/uninstall.sh" \
   "${ROOT}/lib" \
   "${ROOT}/shell_scripts" \
   "${ROOT}/config" \
-  "${ROOT}/LICENSE" \
-  "${ROOT}/README.md" \
-  "${STAGE}/lazygimp/"
+  "$BUNDLE/"
+
+# Docs live under docs/ in this repository, but tolerate a root layout too.
+copy_first LICENSE docs/LICENSE LICENSE
+copy_first README.md docs/README.md README.md
 
 # Stamp the release version into the bundled installer.
 sed -i "s/^LAZYGIMP_VERSION=.*/LAZYGIMP_VERSION=\"${VERSION}\"/" \
-  "${STAGE}/lazygimp/install.sh"
+  "${BUNDLE}/install.sh"
 
 tar -czf "${DIST}/lazygimp.tar.gz" -C "$STAGE" lazygimp
 cp "${DIST}/lazygimp.tar.gz" "${DIST}/lazygimp-${VERSION}.tar.gz"
