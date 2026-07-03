@@ -16,12 +16,6 @@ setup() {
   [ "$output" = "${BATS_TEST_TMPDIR}/xdg/GIMP" ]
 }
 
-@test "config_base(flatpak) targets the sandboxed app dir" {
-  run gimp::config_base flatpak
-  [ "$status" -eq 0 ]
-  [ "$output" = "${HOME}/.var/app/org.gimp.GIMP/config/GIMP" ]
-}
-
 @test "newest_config_dir picks the highest version (sort -V: 3.10 > 3.2)" {
   mkdir -p "${HOME}/.config/GIMP/3.0" "${HOME}/.config/GIMP/3.2" "${HOME}/.config/GIMP/3.10"
   run gimp::newest_config_dir "${HOME}/.config/GIMP"
@@ -54,6 +48,25 @@ setup() {
   PATH="${bin}:${PATH}" run gimp::config_dir native
   [ "$status" -eq 0 ]
   [ "$output" = "${HOME}/.config/GIMP/3.4" ]
+}
+
+@test "config_dir prefers the live dir (pluginrc) over the version string" {
+  # GIMP reports 3.4 but actually keeps its profile under 3.0 (a pluginrc
+  # marks the dir GIMP really uses). The layer must target 3.0, not 3.4.
+  local bin="${BATS_TEST_TMPDIR}/bin"
+  mkdir -p "$bin" "${HOME}/.config/GIMP/3.0" "${HOME}/.config/GIMP/3.4"
+  : >"${HOME}/.config/GIMP/3.0/pluginrc"
+  printf '#!/bin/sh\necho "GNU Image Manipulation Program version 3.4.1"\n' >"${bin}/gimp"
+  chmod +x "${bin}/gimp"
+  PATH="${bin}:${PATH}" run gimp::config_dir native
+  [ "$status" -eq 0 ]
+  [ "$output" = "${HOME}/.config/GIMP/3.0" ]
+}
+
+@test "live_config_dir ignores our empty dirs (no pluginrc)" {
+  mkdir -p "${HOME}/.config/GIMP/3.2"
+  run gimp::live_config_dir "${HOME}/.config/GIMP"
+  [ "$status" -ne 0 ]
 }
 
 @test "config_dir uses LAZYGIMP_GIMP_VERSION_HINT when set (full version normalised to X.Y)" {

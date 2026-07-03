@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
 # plugins-install.sh — GIMP 3 plug-ins, on top of any LazyGimp installation
-# (native packages, flatpak or AppImage):
+# (native packages or AppImage):
 #
 #   batcher            batch processing / export layers  (BSD-3-Clause)
 #   segment-anything   AI subject selection via Meta SAM (AGPL-3.0),
@@ -12,7 +12,6 @@
 #   ./plugins-install.sh --batcher           install Batcher only
 #   ./plugins-install.sh --segment-anything  install Segment Anything only
 #   ./plugins-install.sh --uninstall-all     remove everything we installed
-#   ./plugins-install.sh --kind flatpak ...  target the flatpak GIMP explicitly
 # ---------------------------------------------------------------------------
 
 # Tolerate being launched with `sh script.sh` (dash, or bash in POSIX mode,
@@ -53,7 +52,10 @@ Options:
                        result is fully working out of the box
   --no-sam-backend     with --segment-anything: install the plug-in only,
                        e.g. if you already manage your own PyTorch/SAM setup
-  --kind <k>           target GIMP install kind: native | flatpak
+  --sam-model <key>    which SAM checkpoint to set up (default: ${SAM_DEFAULT_MODEL});
+                       also settable via LAZYGIMP_SAM_MODEL
+  --list-sam-models    list the available SAM models and exit
+  --kind <k>           target GIMP install kind: native
                        (default: auto-detected)
   --sam-info           print the two values the Segment Anything dialog asks
                        for on its first run, then exit
@@ -66,16 +68,26 @@ GPU acceleration: LAZYGIMP_TORCH_INDEX_URL=<torch wheel index> (default: CPU whe
 EOF
 }
 
-# Which GIMPs should receive the plug-ins? Every install that is actually
-# present (a user experimenting with both native and flatpak gets the
-# plug-ins in both — whichever GIMP they open, everything is there).
+# Print the SAM model registry, one row per model, marking the default.
+list_sam_models() {
+  local key
+  printf 'Available SAM models (use --sam-model <key> or LAZYGIMP_SAM_MODEL):\n\n'
+  for key in "${SAM_MODEL_ORDER[@]}"; do
+    local mark=' '
+    [[ "$key" == "${SAM_DEFAULT_MODEL}" ]] && mark='*'
+    printf ' %s %-22s %s (%s)\n' "$mark" "$key" \
+      "$(segany::_model_field "$key" 4)" "$(segany::_model_field "$key" 3)"
+  done
+  printf '\n * = default. Checkpoints are stored under %s/models/\n' "$(segany::backend_dir)"
+}
+
+# Which GIMP should receive the plug-ins? Detect a native install, whether by
+# querying `gimp --version` or by finding an existing config dir on disk.
 detect_kinds() {
   local kinds=()
   gimp::detect_version native >/dev/null 2>&1 && kinds+=(native)
-  gimp::detect_version flatpak >/dev/null 2>&1 && kinds+=(flatpak)
   if ((${#kinds[@]} == 0)); then
     gimp::newest_config_dir "$(gimp::config_base native)" >/dev/null 2>&1 && kinds+=(native)
-    gimp::newest_config_dir "$(gimp::config_base flatpak)" >/dev/null 2>&1 && kinds+=(flatpak)
   fi
   ((${#kinds[@]} > 0)) || return 1
   printf '%s\n' "${kinds[@]}"
@@ -90,6 +102,15 @@ while (($#)); do
     --batcher) WANT_BATCHER=1 ;;
     --segment-anything | --segany) WANT_SEGANY=1 ;;
     --no-sam-backend) SAM_BACKEND=0 ;;
+    --sam-model)
+      export LAZYGIMP_SAM_MODEL="${2:?--sam-model requires a value}"
+      shift
+      ;;
+    --sam-model=*) export LAZYGIMP_SAM_MODEL="${1#*=}" ;;
+    --list-sam-models)
+      list_sam_models
+      exit 0
+      ;;
     --kind)
       KIND="${2:?--kind requires a value}"
       shift

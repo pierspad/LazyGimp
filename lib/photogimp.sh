@@ -109,10 +109,10 @@ photogimp::remove() { # <target-dir>
 # recorded in a manifest under the state dir, so
 # photogimp::remove_desktop_files can undo this cleanly.
 #
-# Upstream hardcodes `Exec=/usr/bin/flatpak run ... org.gimp.GIMP` in its
-# .desktop file, which silently does nothing unless GIMP came from flatpak.
-# We retarget Exec to the GIMP that was actually installed (override the
-# command via LAZYGIMP_GIMP_COMMAND, e.g. an AppImage path).
+# Upstream hardcodes an `Exec=` line in its .desktop file (historically a
+# flatpak invocation), which silently does nothing unless it matches the GIMP
+# actually installed. We retarget Exec to the GIMP that was installed (override
+# the command via LAZYGIMP_GIMP_COMMAND, e.g. an AppImage path).
 photogimp::install_desktop_files() { # <extracted-dir> <kind>
   local root="$1" kind="${2:-native}" share manifest file rel
   share="$(find "$root" -type d -path '*/.local/share' 2>/dev/null | head -n1)"
@@ -128,23 +128,26 @@ photogimp::install_desktop_files() { # <extracted-dir> <kind>
     printf '%s\n' "${HOME}/.local/share/${rel}" >>"$manifest"
   done < <(find "$share" -type f -print0)
 
-  # Retarget the launcher (flatpak installs keep the upstream flatpak Exec).
-  if [[ "$kind" != flatpak ]]; then
-    local desktop exec_line="${LAZYGIMP_GIMP_COMMAND:-gimp} %U"
-    while IFS= read -r desktop; do
-      [[ "$desktop" == *.desktop ]] || continue
-      sed -i -e "s|^Exec=.*|Exec=${exec_line}|" -e '/^TryExec=/d' -e '/^DBusActivatable=/d' "$desktop"
-    done <"$manifest"
+  # Retarget the launcher. Upstream PhotoGIMP hardcodes an Exec line for one
+  # specific GIMP (often a flatpak invocation with a pinned `--command=`, or a
+  # bare `gimp`); on a mismatch the menu entry launches nothing or the wrong
+  # binary. Rewrite Exec to point unambiguously at the GIMP LazyGimp set up
+  # (override via LAZYGIMP_GIMP_COMMAND, e.g. an AppImage path), and drop
+  # TryExec/DBusActivatable which reference the same stale binary/service.
+  local desktop exec_line="${LAZYGIMP_GIMP_COMMAND:-gimp} %U"
+  while IFS= read -r desktop; do
+    [[ "$desktop" == *.desktop ]] || continue
+    sed -i -e "s|^Exec=.*|Exec=${exec_line}|" -e '/^TryExec=/d' -e '/^DBusActivatable=/d' "$desktop"
+  done <"$manifest"
 
-    # Our entry shadows org.gimp.GIMP.desktop, but some distros name the
-    # stock entry differently (e.g. Arch ships gimp.desktop) — hide that
-    # duplicate with a NoDisplay override, tracked for clean removal.
-    local stock="/usr/share/applications/gimp.desktop" hidden
-    hidden="${HOME}/.local/share/applications/gimp.desktop"
-    if [[ -f "$stock" && ! -f "$hidden" ]]; then
-      printf '[Desktop Entry]\nType=Application\nName=GIMP\nNoDisplay=true\n' >"$hidden"
-      printf '%s\n' "$hidden" >>"$manifest"
-    fi
+  # Our entry shadows org.gimp.GIMP.desktop, but some distros name the stock
+  # entry differently (e.g. Arch ships gimp.desktop) — hide that duplicate with
+  # a NoDisplay override, tracked for clean removal.
+  local stock="/usr/share/applications/gimp.desktop" hidden
+  hidden="${HOME}/.local/share/applications/gimp.desktop"
+  if [[ -f "$stock" && ! -f "$hidden" ]]; then
+    printf '[Desktop Entry]\nType=Application\nName=GIMP\nNoDisplay=true\n' >"$hidden"
+    printf '%s\n' "$hidden" >>"$manifest"
   fi
 
   if have update-desktop-database; then
@@ -166,7 +169,7 @@ photogimp::remove_desktop_files() {
   fi
 }
 
-photogimp::install() { # <native|flatpak|snap>
+photogimp::install() { # <native|snap>
   local kind="$1" target extracted payload backup files
   # NOTE: `die` inside $() only kills the subshell, and set -e is suspended
   # when the caller tests our exit status — every step needs its own guard.
@@ -195,7 +198,7 @@ photogimp::install() { # <native|flatpak|snap>
   log::ok "PhotoGIMP layer installed (${files} files) into $(basename "$target")"
 }
 
-photogimp::uninstall() { # <native|flatpak|snap>
+photogimp::uninstall() { # <native|snap>
   local kind="$1" target
   target="$(gimp::config_dir "$kind")" || return 1
   [[ -n "$target" ]] || return 1

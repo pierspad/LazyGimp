@@ -16,7 +16,7 @@ source "$(dirname -- "${BASH_SOURCE[0]}")/gimp.sh"
 
 LAZYGIMP_STATE_DIR="${LAZYGIMP_STATE_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/lazygimp}"
 
-plugins::dir() { # <native|flatpak|snap>
+plugins::dir() { # <native|snap>
   local config_dir
   config_dir="$(gimp::config_dir "$1")" || return 1
   [[ -n "$config_dir" ]] || return 1

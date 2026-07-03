@@ -54,7 +54,6 @@
       {
         "assets": [
           { "path": "dist/package-manager-install.sh", "label": "Linux package manager — package-manager-install.sh" },
-          { "path": "dist/flatpak-install.sh", "label": "Linux Flatpak — flatpak-install.sh" },
           { "path": "dist/appimage-install.sh", "label": "Linux AppImage — appimage-install.sh" },
           { "path": "dist/install.sh", "label": "Linux interactive (picks a method for you) — install.sh" },
           { "path": "dist/plugins-install.sh", "label": "Linux plug-ins only (Batcher, SAM) — plugins-install.sh" },

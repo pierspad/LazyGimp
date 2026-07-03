@@ -4,15 +4,15 @@
 # clean (e.g. to reinstall with a different method).
 #
 # It detects which installations are actually present (native packages,
-# flatpak, AppImage, PhotoGIMP layers) and removes only what you confirm.
+# AppImage, PhotoGIMP layers) and removes only what you confirm.
 # Personal GIMP files (brushes, scripts, plug-ins, settings not shipped by
 # PhotoGIMP) are never touched; pre-install backups are kept unless --purge.
 #
 # Usage:
 #   ./uninstall.sh                      interactive: detect, list, confirm
 #   ./uninstall.sh --method <m> [...]   non-interactive removal of one or
-#                                       more of: package-manager|flatpak|
-#                                       appimage|photogimp
+#                                       more of: package-manager|appimage|
+#                                       photogimp
 #   ./uninstall.sh --all --yes          remove everything detected, no prompt
 #   ./uninstall.sh --purge              also delete backups and state dir
 # ---------------------------------------------------------------------------
@@ -51,9 +51,12 @@ Usage: ${0##*/} [options]
 
 Options:
   --method <m>   remove a specific installation; repeatable
-                 (package-manager | flatpak | appimage | photogimp | plugins)
+                 (package-manager | appimage | photogimp | plugins)
   --all          remove every installation detected
-  --purge        also delete LazyGimp backups/state and flatpak app data
+  --purge        also delete LazyGimp backups/state and ALL GIMP metadata for
+                 every version installed (per-user config/cache/data — settings,
+                 and brushes/scripts stored in the GIMP data dir, plus any
+                 leftover flatpak data). Destructive: asks once before wiping.
   --yes          do not ask for confirmation
   -h, --help     show this help
 
@@ -62,8 +65,6 @@ EOF
 }
 
 # ------------------------------- detection --------------------------------
-detected_flatpak() { have flatpak && flatpak info "${GIMP_FLATPAK_ID}" >/dev/null 2>&1; }
-
 detected_appimage() {
   local dir="${LAZYGIMP_APPIMAGE_DIR:-${HOME}/Applications}"
   compgen -G "${dir}/GIMP-*.AppImage" >/dev/null 2>&1
@@ -75,12 +76,10 @@ detected_package_manager() {
 }
 
 detected_photogimp() {
-  local kind base dir
-  for kind in native flatpak; do
-    base="$(gimp::config_base "$kind")"
-    for dir in "$base"/*/; do
-      [[ -f "${dir}${PHOTOGIMP_MANIFEST}" ]] && return 0
-    done
+  local base dir
+  base="$(gimp::config_base native)"
+  for dir in "$base"/*/; do
+    [[ -f "${dir}${PHOTOGIMP_MANIFEST}" ]] && return 0
   done
   return 1
 }
@@ -90,31 +89,6 @@ detected_plugins() {
 }
 
 # -------------------------------- removal ---------------------------------
-
-# Revert font-access overrides exactly as recorded by flatpak-install.sh.
-revert_font_overrides() {
-  local state="${LAZYGIMP_STATE_DIR}/flatpak-font-overrides" fs
-  [[ -f "$state" ]] || return 0
-  while IFS= read -r fs; do
-    if [[ -n "$fs" ]]; then
-      flatpak override --user --nofilesystem="${fs%%:*}" "${GIMP_FLATPAK_ID}" 2>/dev/null || true
-    fi
-  done <"$state"
-  rm -f -- "$state"
-  log::info "font-access sandbox overrides reverted"
-}
-
-remove_flatpak() {
-  log::info "removing ${GIMP_FLATPAK_ID} (flatpak)"
-  revert_font_overrides
-  flatpak uninstall -y "${GMIC_FLATPAK_ID}" 2>/dev/null || true
-  flatpak uninstall -y "${GIMP_FLATPAK_ID}"
-  if ((PURGE)); then
-    rm -rf "${HOME}/.var/app/${GIMP_FLATPAK_ID}"
-    log::info "flatpak app data purged"
-  fi
-  log::ok "flatpak installation removed"
-}
 
 remove_appimage() {
   local dir="${LAZYGIMP_APPIMAGE_DIR:-${HOME}/Applications}" file
@@ -136,18 +110,16 @@ remove_package_manager() {
   log::ok "native packages removed"
 }
 
-# Remove every PhotoGIMP layer found (any version dir, native and flatpak).
+# Remove every PhotoGIMP layer found (any version dir).
 remove_photogimp() {
-  local kind base dir found=0
-  for kind in native flatpak; do
-    base="$(gimp::config_base "$kind")"
-    for dir in "$base"/*/; do
-      if [[ -f "${dir}${PHOTOGIMP_MANIFEST}" ]]; then
-        log::info "removing PhotoGIMP layer from ${dir}"
-        photogimp::remove "${dir%/}"
-        found=1
-      fi
-    done
+  local base dir found=0
+  base="$(gimp::config_base native)"
+  for dir in "$base"/*/; do
+    if [[ -f "${dir}${PHOTOGIMP_MANIFEST}" ]]; then
+      log::info "removing PhotoGIMP layer from ${dir}"
+      photogimp::remove "${dir%/}"
+      found=1
+    fi
   done
   photogimp::remove_desktop_files
   if ((found)); then
@@ -160,6 +132,35 @@ remove_photogimp() {
 purge_state() {
   rm -rf "${LAZYGIMP_STATE_DIR}"
   log::ok "LazyGimp state and backups purged (${LAZYGIMP_STATE_DIR})"
+}
+
+# Delete GIMP's own per-user metadata for EVERY version, across all install
+# kinds: config (all X.Y profiles), cache and data dirs. On native/snap the
+# data dir also holds user brushes/scripts, so this is deliberately scorched
+# earth — gated behind --purge and one explicit confirmation. Any leftover
+# flatpak tree under ~/.var/app (from a previous flatpak install) bundles
+# config+cache+data together, so removing it covers all of them too.
+purge_gimp_metadata() {
+  local -a targets=(
+    "$(gimp::config_base native)"                # ~/.config/GIMP  (every X.Y)
+    "${XDG_CACHE_HOME:-${HOME}/.cache}/GIMP"      # ~/.cache/GIMP
+    "${XDG_DATA_HOME:-${HOME}/.local/share}/GIMP" # ~/.local/share/GIMP
+    "${HOME}/.var/app/org.gimp.GIMP"              # legacy flatpak data, if any
+    "$(gimp::config_base snap)"                   # ~/snap/gimp/.../GIMP
+  )
+  local t removed=0
+  for t in "${targets[@]}"; do
+    if [[ -e "$t" ]]; then
+      rm -rf -- "$t"
+      log::info "removed ${t}"
+      removed=1
+    fi
+  done
+  if ((removed)); then
+    log::ok "GIMP metadata purged (all versions)"
+  else
+    log::info "no GIMP metadata found to purge"
+  fi
 }
 
 # --------------------------------- flow -----------------------------------
@@ -201,7 +202,6 @@ main() {
   if ((${#TARGETS[@]} == 0)); then
     local detected=()
     detected_package_manager && detected+=(package-manager)
-    detected_flatpak && detected+=(flatpak)
     detected_appimage && detected+=(appimage)
     detected_photogimp && detected+=(photogimp)
     detected_plugins && detected+=(plugins)
@@ -224,7 +224,7 @@ main() {
   # PhotoGIMP layers and plug-ins must go before the GIMP that owns their
   # config dir is removed, otherwise config-base detection loses its anchor.
   local t
-  for t in photogimp plugins package-manager flatpak appimage; do
+  for t in photogimp plugins package-manager appimage; do
     local wanted=0 x
     for x in "${TARGETS[@]}"; do
       [[ "$x" == "$t" || "$x" == pm && "$t" == package-manager ]] && wanted=1
@@ -237,12 +237,16 @@ main() {
         segany::remove_backend
         ;;
       package-manager) confirm "remove GIMP and G'MIC native packages?" && remove_package_manager ;;
-      flatpak) confirm "remove the GIMP flatpak?" && remove_flatpak ;;
       appimage) confirm "remove the GIMP AppImage?" && remove_appimage ;;
     esac
   done
 
   if ((PURGE)); then
+    if confirm "PURGE also wipes ALL GIMP metadata for every version (settings, cache, and brushes/scripts in the GIMP data dir). Continue?"; then
+      purge_gimp_metadata
+    else
+      log::info "GIMP metadata kept"
+    fi
     purge_state
   else
     log::info "backups kept in ${LAZYGIMP_STATE_DIR}/backups (delete with --purge)"

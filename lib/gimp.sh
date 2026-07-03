@@ -14,34 +14,21 @@ readonly _LAZYGIMP_GIMP_LOADED=1
 source "$(dirname -- "${BASH_SOURCE[0]}")/common.sh"
 
 # Echo the per-user config *base* directory for an install kind.
-gimp::config_base() { # <native|flatpak|snap>
+gimp::config_base() { # <native|snap>
   case "$1" in
     native)  printf '%s/GIMP\n' "${XDG_CONFIG_HOME:-${HOME}/.config}" ;;
-    flatpak) printf '%s/.var/app/%s/config/GIMP\n' "${HOME}" "${GIMP_FLATPAK_ID}" ;;
     snap)    printf '%s/snap/gimp/current/.config/GIMP\n' "${HOME}" ;;
     *)       die "unknown install kind: $1" ;;
   esac
 }
 
 # Echo MAJOR.MINOR of the installed GIMP; fails if undetectable.
-gimp::detect_version() { # <native|flatpak|snap>
+gimp::detect_version() { # <native|snap>
   local kind="$1" raw=""
   case "$kind" in
     native)
       if have gimp; then
         raw="$(gimp --version 2>/dev/null || true)"
-      fi
-      ;;
-    flatpak)
-      if have flatpak; then
-        # `flatpak list --columns` is locale-independent, unlike the
-        # human-oriented (and translated!) `flatpak info` output.
-        raw="$(flatpak list --app --columns=application,version 2>/dev/null |
-          awk -v id="${GIMP_FLATPAK_ID}" '$1 == id {print $2}' || true)"
-        if [[ -z "$raw" ]]; then
-          raw="$(LC_ALL=C flatpak info "${GIMP_FLATPAK_ID}" 2>/dev/null |
-            sed -n 's/^ *Version: *//p' || true)"
-        fi
       fi
       ;;
     snap)
@@ -64,6 +51,28 @@ gimp::newest_config_dir() { # <base-dir>
     grep -E '^[0-9]+\.[0-9]+$' | sort -V | tail -n1)"
   [[ -n "$best" ]] || return 1
   printf '%s/%s\n' "$base" "$best"
+}
+
+# Echo the config dir the installed GIMP ACTUALLY reads, identified by the
+# presence of `pluginrc`. Why this and not `gimp --version`: GIMP's user-config
+# namespace (3.0, 3.2, ...) is NOT guaranteed to equal the application's
+# MAJOR.MINOR — a GIMP that reports 3.2 may still keep its profile under
+# `GIMP/3.0`. Trusting the version string therefore lands a config layer in a
+# directory GIMP never opens (exactly the "PhotoGIMP installed but nothing
+# changed" symptom). `pluginrc` is authoritative: GIMP regenerates it on every
+# startup, and the PhotoGIMP layer never ships it (it is in PHOTOGIMP_EXCLUDE),
+# so a dir containing it is one GIMP itself has populated. Version-sorted, so
+# after an upgrade that migrated the profile the newest live dir wins.
+gimp::live_config_dir() { # <base-dir>
+  local base="$1" dir best=""
+  [[ -d "$base" ]] || return 1
+  while IFS= read -r dir; do
+    [[ -f "${dir}/pluginrc" ]] && best="$dir"
+  done < <(find "$base" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null |
+    grep -E '^[0-9]+\.[0-9]+$' | sort -V |
+    while IFS= read -r v; do printf '%s/%s\n' "$base" "$v"; done)
+  [[ -n "$best" ]] || return 1
+  printf '%s\n' "$best"
 }
 
 # Launch GIMP once, headless, so it generates its per-user configuration
@@ -92,10 +101,6 @@ gimp::warm_up() { # <kind> [explicit-gimp-binary]
       else
         return 0
       fi
-      ;;
-    flatpak)
-      have flatpak || return 0
-      cmd=(flatpak run "${GIMP_FLATPAK_ID}")
       ;;
     *) return 0 ;;
   esac
@@ -150,15 +155,22 @@ printf "\n" >&2; log::error "interrupted"; exit 130' INT
 # Strategy, in order:
 #   0. explicit hint (LAZYGIMP_GIMP_VERSION_HINT) — used by installers that
 #      already know which GIMP they just installed (e.g. the AppImage method);
-#   1. version reported by the installed GIMP itself;
-#   2. newest MAJOR.MINOR directory that already exists on disk;
-#   3. give up with an actionable error.
-gimp::config_dir() { # <native|flatpak|snap>
-  local kind="$1" base ver
+#   1. the dir GIMP actually reads, proven by a live `pluginrc` — authoritative
+#      whenever GIMP has already run once (which warm_up guarantees);
+#   2. version reported by the installed GIMP itself (fresh installs);
+#   3. newest MAJOR.MINOR directory that already exists on disk;
+#   4. give up with an actionable error.
+gimp::config_dir() { # <native|snap>
+  local kind="$1" base ver live
   base="$(gimp::config_base "$kind")"
 
   if [[ "${LAZYGIMP_GIMP_VERSION_HINT:-}" =~ ([0-9]+)\.([0-9]+) ]]; then
     printf '%s/%s.%s\n' "$base" "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+    return 0
+  fi
+
+  if live="$(gimp::live_config_dir "$base")"; then
+    printf '%s\n' "$live"
     return 0
   fi
 

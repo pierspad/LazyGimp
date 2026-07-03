@@ -7,14 +7,13 @@
 # run directly (each is fully unattended — zero questions):
 #
 #   package-manager-install.sh   native distro packages   (default)
-#   flatpak-install.sh           Flathub GIMP + G'MIC + Resynthesizer
 #   appimage-install.sh          official gimp.org AppImage
 #
 # Without --method an interactive menu is shown (it works for `curl | bash`
 # too, via /dev/tty). Nothing is ever downloaded before you have chosen.
 #
 # Usage:
-#   ./install.sh [--method package-manager|flatpak|appimage|auto] [--skip-photogimp]
+#   ./install.sh [--method package-manager|appimage|auto] [--skip-photogimp]
 #
 # Piped usage (no checkout needed):
 #   curl -fsSL https://raw.githubusercontent.com/pierspad/LazyGimp/main/install.sh | bash
@@ -48,7 +47,7 @@ fi
 # shellcheck source=lib/common.sh
 source "${SCRIPT_DIR}/lib/common.sh"
 
-readonly METHODS=(package-manager flatpak appimage)
+readonly METHODS=(package-manager appimage)
 
 usage() {
   cat <<EOF
@@ -57,7 +56,7 @@ LazyGimp v${LAZYGIMP_VERSION} — GIMP + PhotoGIMP + G'MIC, ready to use.
 Usage: ${0##*/} [options]
 
 Options:
-  -m, --method <m>      package-manager | flatpak | appimage | auto
+  -m, --method <m>      package-manager | appimage | auto
                         (no flag → interactive menu; 'auto' → first available)
       --skip-photogimp  do not apply the PhotoGIMP configuration layer
       --skip-plugins    do not install the optional plug-ins (Batcher, SAM)
@@ -70,10 +69,8 @@ By default EVERYTHING is set up and ready to use: GIMP + G'MIC + PhotoGIMP
 Methods (each is also a standalone, fully unattended script):
   package-manager  native distro packages, updated by your system   [default]
                    → ./package-manager-install.sh
-  flatpak          Flathub GIMP + G'MIC + Resynthesizer, auto-updated —
-                   best on Debian stable / Ubuntu LTS, whose repos lag
-                   → ./flatpak-install.sh
-  appimage         official gimp.org AppImage, single portable file
+  appimage         official gimp.org AppImage, single portable file —
+                   handy on distros whose repos lag behind upstream
                    → ./appimage-install.sh
 
 To remove everything (and optionally reinstall with another method):
@@ -84,7 +81,6 @@ EOF
 method_available() { # <method>
   case "$1" in
     package-manager) lazygimp::detect_distro >/dev/null 2>&1 ;;
-    flatpak) have flatpak ;;
     appimage) [[ "$(uname -s)" == Linux ]] ;;
     *) return 1 ;;
   esac
@@ -93,7 +89,6 @@ method_available() { # <method>
 method_hint() { # <method> — one-line description for the menu
   case "$1" in
     package-manager) printf 'native distro packages, updated by your system' ;;
-    flatpak) printf "Flathub GIMP + G'MIC extension, auto-updated" ;;
     appimage) printf 'official gimp.org AppImage, single portable file' ;;
   esac
 }
@@ -137,17 +132,47 @@ choose_interactively() {
     case "$choice" in
       '') METHOD="$default" ;;
       1) METHOD=package-manager ;;
-      2) METHOD=flatpak ;;
-      3) METHOD=appimage ;;
-      package-manager | pm | flatpak | appimage) METHOD="${choice/pm/package-manager}" ;;
+      2) METHOD=appimage ;;
+      package-manager | pm | appimage) METHOD="${choice/pm/package-manager}" ;;
       q | quit) exit 0 ;;
       *)
-        printf 'invalid choice: %s (1-3, a method name, or q to quit)\n' "$choice" >"$tty"
+        printf 'invalid choice: %s (1-2, a method name, or q to quit)\n' "$choice" >"$tty"
         continue
         ;;
     esac
     return 0
   done
+}
+
+# Let the user pick the Segment Anything model on /dev/tty (works under
+# `curl | bash` too). No tty, or a blank/invalid answer, keeps the default.
+# Exports LAZYGIMP_SAM_MODEL, which the method installer passes down.
+choose_sam_model_interactively() {
+  local tty=/dev/tty
+  [[ -r "$tty" && -w "$tty" ]] || return 0
+  local idx=0 key choice size note mark
+  {
+    printf '\nWhich Segment Anything model? (AI subject selection)\n\n'
+    for key in "${SAM_MODEL_ORDER[@]}"; do
+      idx=$((idx + 1))
+      IFS='|' read -r _ _ size note <<<"${SAM_MODELS[$key]}"
+      mark=' '
+      [[ "$key" == "${SAM_DEFAULT_MODEL}" ]] && mark='*'
+      printf ' %s %d) %-22s %s (%s)\n' "$mark" "$idx" "$key" "$note" "$size"
+    done
+    printf '\n * = default. Number, key, or blank for the default.\n'
+  } >"$tty"
+
+  printf 'Model [%s]: ' "${SAM_DEFAULT_MODEL}" >"$tty"
+  read -r choice <"$tty" || return 0
+  [[ -z "$choice" ]] && return 0
+  if [[ "$choice" =~ ^[0-9]+$ ]] && ((choice >= 1 && choice <= ${#SAM_MODEL_ORDER[@]})); then
+    export LAZYGIMP_SAM_MODEL="${SAM_MODEL_ORDER[$((choice - 1))]}"
+  elif [[ -n "${SAM_MODELS[$choice]:-}" ]]; then
+    export LAZYGIMP_SAM_MODEL="$choice"
+  else
+    printf 'unknown model "%s" — using the default\n' "$choice" >"$tty"
+  fi
 }
 
 METHOD=""
@@ -178,6 +203,11 @@ main() {
   if [[ -z "$METHOD" ]]; then
     choose_interactively ||
       die "no terminal available for the interactive menu — pass --method explicitly (see --help)"
+    # Same interactive session: let the user pick the SAM model too (unless
+    # plug-ins or SAM are being skipped).
+    if [[ "${LAZYGIMP_SKIP_PLUGINS:-0}" != 1 && "${LAZYGIMP_NO_SAM:-0}" != 1 ]]; then
+      choose_sam_model_interactively
+    fi
   elif [[ "$METHOD" == auto ]]; then
     METHOD="$(recommended_method)" || die "no installation method is available on this system"
     log::info "auto-selected method: ${METHOD}"
@@ -185,7 +215,6 @@ main() {
 
   if ! method_available "$METHOD"; then
     case "$METHOD" in
-      flatpak) die "flatpak is not installed — install it first, or pick another method" ;;
       package-manager) die "unsupported distribution — pick another method, or add shell_scripts/<id>.sh" ;;
       *) die "method '${METHOD}' is not available on this system (see --help)" ;;
     esac
@@ -193,7 +222,6 @@ main() {
 
   case "$METHOD" in
     package-manager) exec "${SCRIPT_DIR}/package-manager-install.sh" ;;
-    flatpak) exec "${SCRIPT_DIR}/flatpak-install.sh" ;;
     appimage) exec "${SCRIPT_DIR}/appimage-install.sh" ;;
     *) die "unknown method: ${METHOD} (see --help)" ;;
   esac

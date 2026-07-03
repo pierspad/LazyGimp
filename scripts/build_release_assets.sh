@@ -42,7 +42,6 @@ copy_first() { # <dest-name> <candidate>...
 cp -a \
   "${ROOT}/install.sh" \
   "${ROOT}/package-manager-install.sh" \
-  "${ROOT}/flatpak-install.sh" \
   "${ROOT}/appimage-install.sh" \
   "${ROOT}/plugins-install.sh" \
   "${ROOT}/uninstall.sh" \
@@ -68,7 +67,6 @@ cp "${ROOT}/windows/windows-install.ps1" "${DIST}/"
 cp "${BUNDLE}/install.sh" "${DIST}/" # version-stamped copy
 cp -a \
   "${ROOT}/package-manager-install.sh" \
-  "${ROOT}/flatpak-install.sh" \
   "${ROOT}/appimage-install.sh" \
   "${ROOT}/plugins-install.sh" \
   "${ROOT}/uninstall.sh" \

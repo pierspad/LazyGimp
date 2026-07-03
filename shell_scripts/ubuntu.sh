@@ -5,7 +5,7 @@
 #
 # GIMP 3.x entered the Ubuntu archive with 25.04 ("plucky"); on older
 # releases the archive still ships GIMP 2.10, for which PhotoGIMP does not
-# apply — the script detects that and points users to the flatpak method.
+# apply — the script detects that and points users to the AppImage method.
 #
 # Sourced by package-manager-install.sh. Contract: define
 # lazygimp::install_packages (required) and lazygimp::post_install_notes
@@ -21,7 +21,7 @@ lazygimp::install_packages() {
     as_root apt-get install -y gimp-gmic
   else
     log::warn "package 'gimp-gmic' is not available on this release — skipping G'MIC"
-    log::warn "alternatives: upgrade to Ubuntu 25.04+, or run './install.sh --method flatpak'"
+    log::warn "alternatives: upgrade to Ubuntu 25.04+, or run './install.sh --method appimage'"
   fi
 }
 
@@ -43,6 +43,6 @@ lazygimp::post_install_notes() {
   candidate="$(apt-cache policy gimp 2>/dev/null | sed -n 's/^ *Candidate: *//p')"
   if [[ "$candidate" == 2.* ]]; then
     log::warn "this release ships GIMP ${candidate}, but PhotoGIMP requires GIMP 3+"
-    log::warn "use './flatpak-install.sh' to get current GIMP with automatic updates"
+    log::warn "use './appimage-install.sh' to get the latest GIMP as a portable AppImage"
   fi
 }

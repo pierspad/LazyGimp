@@ -155,7 +155,7 @@ main() {
 
   log::warn "G'MIC cannot be bundled into the official AppImage safely;"
   log::warn "grab the GIMP plugin build from ${GMIC_DOWNLOAD_PAGE} if you need it,"
-  log::warn "or prefer ./flatpak-install.sh which includes G'MIC."
+  log::warn "or use ./package-manager-install.sh where G'MIC comes from your distro."
 }
 
 main

@@ -37,7 +37,7 @@ jobs:
 
       - name: Entry scripts survive `sh script.sh` (POSIX-mode guard)
         run: |
-          for s in install.sh package-manager-install.sh flatpak-install.sh \
+          for s in install.sh package-manager-install.sh \
                    appimage-install.sh plugins-install.sh uninstall.sh; do
             sh "$s" --help >/dev/null
             bash --posix "$s" --help >/dev/null
