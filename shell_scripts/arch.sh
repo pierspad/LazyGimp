@@ -9,9 +9,11 @@
 # ---------------------------------------------------------------------------
 
 lazygimp::install_packages() {
+  local pkgs=(gimp)
+  [[ "${LAZYGIMP_SKIP_GMIC:-0}" == 1 ]] || pkgs+=(gimp-plugin-gmic)
   # Full -Syu: never install against a stale database (partial upgrades are
   # unsupported on Arch and stale DBs cause 404s from rotated mirrors).
-  as_root pacman -Syu --needed --noconfirm gimp gimp-plugin-gmic
+  as_root pacman -Syu --needed --noconfirm "${pkgs[@]}"
 }
 
 lazygimp::remove_packages() {

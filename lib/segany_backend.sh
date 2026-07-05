@@ -37,7 +37,10 @@ segany::python() {
   printf '%s/venv/bin/python3\n' "$(segany::backend_dir)"
 }
 
-# Echo the selected model key, validated against the registry.
+# Echo the selected model key, validated against the registry. Kept as the
+# single-model entry point for backward compatibility (plugins-install.sh
+# --sam-model, LAZYGIMP_SAM_MODEL) — segany::models() below is the
+# multi-model-aware superset everything new should call instead.
 segany::model() {
   local m="${LAZYGIMP_SAM_MODEL:-${SAM_DEFAULT_MODEL}}"
   if [[ -z "${SAM_MODELS[$m]:-}" ]]; then
@@ -45,6 +48,44 @@ segany::model() {
     m="${SAM_DEFAULT_MODEL}"
   fi
   printf '%s\n' "$m"
+}
+
+# Echo every requested model key, one per line, validated against the
+# registry — the multi-model counterpart of segany::model(). Reads
+# LAZYGIMP_SAM_MODELS (comma/space-separated); when that is unset it falls
+# back to the single-model selection above, so any existing
+# LAZYGIMP_SAM_MODEL-only setup keeps behaving exactly as before.
+segany::models() {
+  local raw="${LAZYGIMP_SAM_MODELS:-}"
+  if [[ -z "$raw" ]]; then
+    segany::model
+    return 0
+  fi
+  local -a keys valid=()
+  IFS=', ' read -r -a keys <<<"$raw"
+  local m
+  for m in "${keys[@]}"; do
+    [[ -n "$m" ]] || continue
+    if [[ -n "${SAM_MODELS[$m]:-}" ]]; then
+      valid+=("$m")
+    else
+      log::warn "unknown SAM model '${m}' in LAZYGIMP_SAM_MODELS — skipping"
+    fi
+  done
+  if ((${#valid[@]} == 0)); then
+    log::warn "LAZYGIMP_SAM_MODELS had no valid entries — falling back to $(segany::model)"
+    segany::model
+    return 0
+  fi
+  printf '%s\n' "${valid[@]}"
+}
+
+# The "primary" model — used for the plug-in's first-run settings.json and
+# for segany::checkpoint()'s single-path callers — is always the first
+# entry of segany::models(), i.e. the first one listed in LAZYGIMP_SAM_MODELS
+# or the sole value from LAZYGIMP_SAM_MODEL/SAM_DEFAULT_MODEL.
+segany::primary_model() {
+  segany::models | head -n1
 }
 
 # Echo one field of a model spec ("family|url|size|note"): 1=family 2=url
@@ -56,12 +97,21 @@ segany::_model_field() { # <model-key> <1-4>
   printf '%s\n' "${fields[$(($2 - 1))]}"
 }
 
-# Absolute path of the checkpoint on disk (filename = basename of its URL, so
-# the plug-in's Auto detection can read the family from it).
-segany::checkpoint() {
+# Absolute path a given model's checkpoint lives (or will live) at on disk
+# (filename = basename of its URL, so the plug-in's Auto detection can read
+# the family from it).
+segany::_checkpoint_for() { # <model-key>
   local url
-  url="$(segany::_model_field "$(segany::model)" 2)" || return 1
+  url="$(segany::_model_field "$1" 2)" || return 1
   printf '%s/models/%s\n' "$(segany::backend_dir)" "${url##*/}"
+}
+
+# Absolute path of the PRIMARY checkpoint on disk — what the plug-in's
+# first-run settings point at. Kept as its own function (rather than every
+# caller writing segany::_checkpoint_for "$(segany::primary_model)") since
+# it existed before multi-model support and several callers already use it.
+segany::checkpoint() {
+  segany::_checkpoint_for "$(segany::primary_model)"
 }
 
 segany::_create_venv() {
@@ -79,16 +129,23 @@ sudo apt install python3-venv"
 
 segany::_pip_install() {
   local pip="$1" torch_index="${LAZYGIMP_TORCH_INDEX_URL:-${TORCH_INDEX_URL_DEFAULT}}"
-  "$pip" install --quiet --upgrade pip
+  # On an interactive terminal, let pip print its own progress (download bars,
+  # "Building wheel for ..."); the git+https installs below build from source
+  # and can otherwise look like a multi-minute hang with --quiet. Piped/CI
+  # runs keep --quiet to avoid noisy logs.
+  local -a q=(--quiet)
+  [[ -t 2 ]] && q=()
+
+  "$pip" install "${q[@]}" --upgrade pip
   log::info "installing PyTorch from ${torch_index} (CPU wheels by default)"
-  "$pip" install --quiet torch torchvision --index-url "$torch_index"
+  "$pip" install "${q[@]}" torch torchvision --index-url "$torch_index"
   log::info "installing image dependencies (numpy, pillow, opencv)"
-  "$pip" install --quiet numpy pillow opencv-python-headless
+  "$pip" install "${q[@]}" numpy pillow opencv-python-headless
   # Both backends: the bridge imports both no matter which model runs.
   log::info "installing Segment Anything 1 (SAM) backend"
-  "$pip" install --quiet "${SAM1_PIP_SPEC}"
-  log::info "installing Segment Anything 2 (SAM2) backend — the bridge imports both"
-  if ! "$pip" install --quiet "${SAM2_PIP_SPEC}"; then
+  "$pip" install "${q[@]}" "${SAM1_PIP_SPEC}"
+  log::info "installing Segment Anything 2 (SAM2) backend — the bridge imports both; builds from source, can take a few minutes"
+  if ! "$pip" install "${q[@]}" "${SAM2_PIP_SPEC}"; then
     log::warn "SAM2 backend failed to build/install; SAM1 models will still work,"
     log::warn "but the bridge needs SAM2 importable — re-run after installing a"
     log::warn "C/C++ toolchain, or see https://github.com/${SEGANY_REPO}#readme"
@@ -97,17 +154,18 @@ segany::_pip_install() {
 
 segany::_download_checkpoint() {
   local model ckpt url size
-  model="$(segany::model)"
-  ckpt="$(segany::checkpoint)"
-  url="$(segany::_model_field "$model" 2)"
-  size="$(segany::_model_field "$model" 3)"
-  if [[ -f "$ckpt" ]]; then
-    log::info "SAM checkpoint already present: ${ckpt}"
-    return 0
-  fi
-  mkdir -p "$(dirname "$ckpt")"
-  log::info "downloading SAM checkpoint '${model}' (~${size}, one-time)"
-  download "$url" "$ckpt"
+  while IFS= read -r model; do
+    ckpt="$(segany::_checkpoint_for "$model")"
+    url="$(segany::_model_field "$model" 2)"
+    size="$(segany::_model_field "$model" 3)"
+    if [[ -f "$ckpt" ]]; then
+      log::info "SAM checkpoint already present: ${ckpt}"
+      continue
+    fi
+    mkdir -p "$(dirname "$ckpt")"
+    log::info "downloading SAM checkpoint '${model}' (~${size}, one-time)"
+    download "$url" "$ckpt"
+  done < <(segany::models)
 }
 
 # Run upstream's own bridge test from the installed plug-in directory. Passing
@@ -131,11 +189,35 @@ segany::_bridge_test() { # <kind>
   fi
 }
 
+# Pre-fill the plug-in's own settings file (seganyplugin/segany_settings.json)
+# with the Python/checkpoint paths we just set up, so the OptionsDialog's
+# first run opens already populated instead of asking the user to browse to
+# two files by hand. We deliberately write ONLY the keys we know (pythonPath,
+# checkPtPath, modelType) rather than the whole schema DialogValue.persist()
+# writes — any field we omit falls back to seganyplugin.py's own default, so
+# this stays forward-compatible if upstream adds fields later. Silently a
+# no-op if the plug-in hasn't been installed into this "kind" yet.
+segany::_write_plugin_settings() { # <kind>
+  local kind="$1" plugin_dir settings_file
+  plugin_dir="$(plugins::dir "$kind")/seganyplugin"
+  [[ -d "$plugin_dir" ]] || return 0
+  settings_file="${plugin_dir}/segany_settings.json"
+  cat >"$settings_file" <<EOF
+{
+  "pythonPath": "$(segany::python)",
+  "checkPtPath": "$(segany::checkpoint)",
+  "modelType": "Auto"
+}
+EOF
+  log::ok "pre-filled the plug-in's dialog (Python/checkpoint paths) — first run just needs OK"
+}
+
 segany::_write_info() {
-  local dir info model
+  local dir info primary all_models
   dir="$(segany::backend_dir)"
   info="${dir}/INFO.txt"
-  model="$(segany::model)"
+  primary="$(segany::primary_model)"
+  all_models="$(segany::models | paste -sd, -)"
   cat >"$info" <<EOF
 LazyGimp — Segment Anything backend
 ===================================
@@ -149,11 +231,15 @@ fill in these two fields — GIMP remembers them afterwards:
 Model Type: leave "Auto" in the dialog — it is inferred from the checkpoint
 filename ($(basename "$(segany::checkpoint)")).
 
-Selected model: ${model} — $(segany::_model_field "$model" 4)
+Installed model(s): ${all_models}
+Primary (pre-filled above): ${primary} — $(segany::_model_field "$primary" 4)
 Checkpoints live in: ${dir}/models/
+To use a different installed model, browse to its checkpoint under
+${dir}/models/ in the plug-in's Expert Mode.
 
-Change model later:
+Change/add models later:
   LAZYGIMP_SAM_MODEL=<key> ./plugins-install.sh --segment-anything
+  LAZYGIMP_SAM_MODELS=<key1,key2,...> ./plugins-install.sh --segment-anything
   (list keys with: ./plugins-install.sh --list-sam-models)
 
 GPU acceleration: reinstall the backend with a CUDA/ROCm wheel index, e.g.
@@ -163,21 +249,27 @@ EOF
   printf '%s\n' "$info"
 }
 
-# Install the whole backend. Safe to re-run (idempotent).
+# Install the whole backend. Safe to re-run (idempotent) — including with a
+# different/expanded LAZYGIMP_SAM_MODELS: already-downloaded checkpoints are
+# left alone (see segany::_download_checkpoint) and only the missing ones
+# are fetched, so re-running this to add a model never re-downloads what's
+# already there, and never fails just because a previous run left the venv
+# already built.
 segany::install_backend() { # <kind>
-  local kind="$1" dir info model
+  local kind="$1" dir info models_list
   require python3
   have git || die "git is required to install Segment Anything (pip installs it \
 from the official repositories) — install git and re-run"
   dir="$(segany::backend_dir)"
-  model="$(segany::model)"
   mkdir -p "$dir"
+  mapfile -t models_list < <(segany::models)
 
-  log::info "SAM model: ${model} — $(segany::_model_field "$model" 4)"
+  log::info "SAM model(s): ${models_list[*]}"
   segany::_create_venv "$dir"
   segany::_pip_install "${dir}/venv/bin/pip"
   segany::_download_checkpoint
   segany::_bridge_test "$kind"
+  segany::_write_plugin_settings "$kind"
   info="$(segany::_write_info)"
 
   log::ok "SAM backend ready under ${dir}"

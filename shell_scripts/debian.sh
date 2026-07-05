@@ -11,6 +11,10 @@ lazygimp::install_packages() {
   as_root apt-get update
   as_root apt-get install -y gimp
 
+  if [[ "${LAZYGIMP_SKIP_GMIC:-0}" == 1 ]]; then
+    return 0
+  fi
+
   # The G'MIC plugin for GIMP 3 is packaged only from Debian 13 onwards.
   if apt-cache show gimp-gmic >/dev/null 2>&1; then
     as_root apt-get install -y gimp-gmic

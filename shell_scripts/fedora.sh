@@ -9,7 +9,9 @@
 # ---------------------------------------------------------------------------
 
 lazygimp::install_packages() {
-  as_root dnf install -y gimp gmic-gimp
+  local pkgs=(gimp)
+  [[ "${LAZYGIMP_SKIP_GMIC:-0}" == 1 ]] || pkgs+=(gmic-gimp)
+  as_root dnf install -y "${pkgs[@]}"
 }
 
 lazygimp::remove_packages() {

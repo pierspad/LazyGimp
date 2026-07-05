@@ -153,6 +153,21 @@ photogimp::install_desktop_files() { # <extracted-dir> <kind>
   if have update-desktop-database; then
     update-desktop-database "${HOME}/.local/share/applications" 2>/dev/null || true
   fi
+
+  # The icon FILES were just installed above (they live under the same
+  # .local/share tree as the .desktop file, so the loop already copied
+  # them), but icon THEMES are indexed/cached — GTK/Qt/Plasma consult that
+  # cache instead of re-scanning the icon directory on every lookup.
+  # Without refreshing it, PhotoGIMP's icon can stay invisible (a generic
+  # fallback shown instead, e.g. in the taskbar/app switcher/Wayland
+  # window-list) until something else happens to rebuild the cache on its
+  # own. Never fatal: some distros don't ship gtk-update-icon-cache, and a
+  # missing index.theme in ~/.local/share/icons/hicolor is common/harmless.
+  local icon_theme_dir="${HOME}/.local/share/icons/hicolor"
+  if have gtk-update-icon-cache && [[ -d "$icon_theme_dir" ]]; then
+    gtk-update-icon-cache -q -t -f "$icon_theme_dir" 2>/dev/null || true
+    log::info "refreshed the icon cache (${icon_theme_dir})"
+  fi
   log::info "PhotoGIMP desktop entry installed (launches the GIMP set up by LazyGimp)"
 }
 

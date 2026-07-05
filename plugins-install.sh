@@ -54,11 +54,17 @@ Options:
                        e.g. if you already manage your own PyTorch/SAM setup
   --sam-model <key>    which SAM checkpoint to set up (default: ${SAM_DEFAULT_MODEL});
                        also settable via LAZYGIMP_SAM_MODEL
+  --sam-models <k1,k2,...>  install SEVERAL SAM checkpoints in one run;
+                       also settable via LAZYGIMP_SAM_MODELS. Takes priority
+                       over --sam-model/LAZYGIMP_SAM_MODEL when both are set.
   --list-sam-models    list the available SAM models and exit
   --kind <k>           target GIMP install kind: native
                        (default: auto-detected)
   --sam-info           print the two values the Segment Anything dialog asks
                        for on its first run, then exit
+  --uninstall <name>   remove exactly ONE plug-in (batcher|segment-anything),
+                       leaving every other installed plug-in untouched;
+                       segment-anything also removes the SAM backend
   --uninstall-all      remove every plug-in installed by LazyGimp
                        (and the SAM backend, if present)
   -h, --help           show this help
@@ -71,7 +77,9 @@ EOF
 # Print the SAM model registry, one row per model, marking the default.
 list_sam_models() {
   local key
-  printf 'Available SAM models (use --sam-model <key> or LAZYGIMP_SAM_MODEL):\n\n'
+  printf 'Available SAM models:\n'
+  printf '  one:     --sam-model <key>        (or LAZYGIMP_SAM_MODEL)\n'
+  printf '  several: --sam-models <k1,k2,...>  (or LAZYGIMP_SAM_MODELS)\n\n'
   for key in "${SAM_MODEL_ORDER[@]}"; do
     local mark=' '
     [[ "$key" == "${SAM_DEFAULT_MODEL}" ]] && mark='*'
@@ -107,6 +115,11 @@ while (($#)); do
       shift
       ;;
     --sam-model=*) export LAZYGIMP_SAM_MODEL="${1#*=}" ;;
+    --sam-models)
+      export LAZYGIMP_SAM_MODELS="${2:?--sam-models requires a comma-separated value}"
+      shift
+      ;;
+    --sam-models=*) export LAZYGIMP_SAM_MODELS="${1#*=}" ;;
     --list-sam-models)
       list_sam_models
       exit 0
@@ -118,12 +131,25 @@ while (($#)); do
     --kind=*) KIND="${1#*=}" ;;
     --sam-info)
       cat <<EOF
-Segment Anything — first-run dialog values (GIMP remembers them afterwards):
+SAM (Segmentation Models plug-in) — first-run dialog values (GIMP remembers them afterwards):
 
   Python3 Path:      $(segany::python)
-  Model Checkpoint:  $(segany::checkpoint)
+  Model Checkpoint:  $(segany::checkpoint)   (primary — first of: $(segany::models | paste -sd, -))
   Model Type:        Auto (inferred from the checkpoint filename)
 EOF
+      exit 0
+      ;;
+    --uninstall)
+      target="${2:?--uninstall requires a value (batcher|segment-anything)}"
+      shift
+      case "$target" in
+        batcher) plugins::uninstall_one batcher ;;
+        segment-anything | segany)
+          plugins::uninstall_one seganyplugin
+          segany::remove_backend
+          ;;
+        *) die "unknown --uninstall target: ${target} (batcher|segment-anything)" ;;
+      esac
       exit 0
       ;;
     --uninstall-all)
