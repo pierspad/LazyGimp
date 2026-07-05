@@ -2661,6 +2661,19 @@ if _TK_OK:
             "review": "_wizard_render_review",
         }
 
+        # Which wizard page owns a given plan key, so Review's rows can jump
+        # straight back to the page that queued them.
+        _WIZARD_KEY_PREFIXES = (
+            ("gimp_install_", "gimp"),
+            ("photogimp:", "photogimp"),
+            ("gmic:", "gmic"),
+            ("sam_plugin:", "sam"),
+            ("sam_backend:", "sam"),
+            ("sam_model:", "sam"),
+            ("sam3:", "sam"),
+            ("batcher:", "batcher"),
+        )
+
         def show_wizard(self):
             self.plan = InstallPlan()
             default_choice = list(TORCH_INDEX_URLS.keys())[
@@ -2704,9 +2717,32 @@ if _TK_OK:
             self.wizard_index -= 1
             self._render_wizard_step()
 
-        def _wizard_toggle_action(self, key: str, label: str, kind: str, run):
-            self.plan.toggle(PlannedAction(key=key, label=label, kind=kind, run=run))
-            self._render_wizard_step()
+        def _wizard_jump_to_step(self, step_key: str):
+            for i, step in enumerate(self.wizard_steps):
+                if step.key == step_key:
+                    self.wizard_index = i
+                    self._render_wizard_step()
+                    return
+
+        def _wizard_step_key_for_action(self, key: str) -> str:
+            for prefix, step_key in self._WIZARD_KEY_PREFIXES:
+                if key.startswith(prefix):
+                    return step_key
+            return "review"
+
+        def _wizard_toggle_and_advance(self, key: str, label: str, kind: str, run, *, advance: bool):
+            """Toggle one PlannedAction in/out of the plan. Picking an action
+            on a single-decision page (GIMP/PhotoGIMP/G'MIC/Batcher) moves
+            straight on to the next page, like a normal installer; un-picking
+            it (or toggling on a multi-item page like SAM, where jumping away
+            after every click would make it impossible to pick more than one
+            thing) just refreshes this page in place — a cheap, flicker-free
+            partial redraw, not a full-screen rebuild."""
+            now_queued = self.plan.toggle(PlannedAction(key=key, label=label, kind=kind, run=run))
+            if advance and now_queued:
+                self._wizard_advance()
+            else:
+                self._refresh_wizard_body()
 
         def _render_wizard_step(self):
             self.current_screen = "wizard"
@@ -2727,19 +2763,33 @@ if _TK_OK:
             nav.pack(fill="x", padx=26, pady=(10, 16), side="bottom")
             RoundedButton(nav, "← Back", variant="secondary", width=110, command=self._wizard_back).pack(
                 side="left")
+            self._wizard_next_btn = None
             if step.key != "review":
-                next_btn = RoundedButton(nav, "Next →", variant="primary", width=140,
-                                          command=self._wizard_advance)
-                next_btn.pack(side="right")
-                next_btn.set_enabled(self._wizard_can_advance())
+                self._wizard_next_btn = RoundedButton(nav, "Next →", variant="primary", width=140,
+                                                       command=self._wizard_advance)
+                self._wizard_next_btn.pack(side="right")
+                self._wizard_next_btn.set_enabled(self._wizard_can_advance())
                 if not step.prerequisite:
                     RoundedButton(nav, "Skip →", variant="secondary", width=110,
                                   command=self._wizard_advance).pack(side="right", padx=(0, 8))
 
-            scroller = ScrollableFrame(outer)
-            scroller.pack(fill="both", expand=True, padx=26, pady=(6, 0))
-            getattr(self, self._WIZARD_RENDERERS[step.key])(scroller.inner)
-            scroller.bind_mousewheel_recursive()
+            self._wizard_scroller = ScrollableFrame(outer)
+            self._wizard_scroller.pack(fill="both", expand=True, padx=26, pady=(6, 0))
+            self._wizard_body_parent = self._wizard_scroller.inner
+            self._refresh_wizard_body()
+
+        def _refresh_wizard_body(self):
+            """Re-render only the current page's content, in place — used for
+            every toggle click so a selection never causes the whole screen
+            (top bar, nav bar, scrollbar) to flash and rebuild."""
+            parent = self._wizard_body_parent
+            for w in parent.winfo_children():
+                w.destroy()
+            step = self.wizard_steps[self.wizard_index]
+            getattr(self, self._WIZARD_RENDERERS[step.key])(parent)
+            self._wizard_scroller.bind_mousewheel_recursive()
+            if self._wizard_next_btn is not None and self._wizard_next_btn.winfo_exists():
+                self._wizard_next_btn.set_enabled(self._wizard_can_advance())
 
         def _status_row(self, body, ok: bool, text: str):
             row = tk.Frame(body, bg=CARD_BG)
@@ -2750,12 +2800,15 @@ if _TK_OK:
                                                                                      expand=True)
 
         def _wizard_toggle_card(self, parent, *, key: str, installed: bool, status_text: str, install_label: str,
-                                 install_run, uninstall_run, uninstall_label: str = "Remove",
-                                 install_enabled: bool = True, extra=None):
+                                 install_run, uninstall_run, uninstall_label: str = "Uninstall",
+                                 install_enabled: bool = True, disabled_reason: Optional[str] = None,
+                                 advance: bool = True, extra=None):
             """One reusable card covering every simple component page
             (PhotoGIMP, G'MIC, the SAM plug-in, the SAM backend, Batcher):
-            not installed -> a single toggle that queues/unqueues Install;
-            installed -> Install disabled, Uninstall enabled and toggleable."""
+            not installed -> one green toggle that queues/unqueues Install;
+            installed -> one red toggle that queues/unqueues Uninstall.
+            Exactly one button, so there's never a second, greyed-out one
+            sitting next to it — just a ✓ once it's queued."""
             card = RoundedCard(parent)
             card.pack(fill="x", pady=(0, 10))
             body = card.body
@@ -2765,29 +2818,25 @@ if _TK_OK:
             btn_row = tk.Frame(body, bg=CARD_BG)
             btn_row.pack(fill="x", pady=(6, 0))
             if installed:
-                done_btn = RoundedButton(btn_row, "Installed", icon="check", variant="secondary", width=160)
-                done_btn.pack(side="left", padx=(0, 8))
-                done_btn.set_enabled(False)
                 remove_key = f"{key}:remove"
                 queued = self.plan.has(remove_key)
-                remove_btn = RoundedButton(
-                    btn_row, "Cancel removal" if queued else uninstall_label,
-                    icon="undo" if queued else "trash", variant="secondary" if queued else "danger", width=200,
-                    command=lambda: self._wizard_toggle_action(remove_key, f"Remove {install_label}", "remove",
-                                                                uninstall_run))
-                remove_btn.pack(side="left")
+                RoundedButton(
+                    btn_row, uninstall_label + (" ✓" if queued else ""), icon="trash", variant="danger", width=220,
+                    command=lambda: self._wizard_toggle_and_advance(
+                        remove_key, f"Remove {install_label}", "remove", uninstall_run, advance=advance),
+                ).pack(side="left")
             else:
                 install_key = f"{key}:install"
                 queued = self.plan.has(install_key)
-                install_btn = RoundedButton(
-                    btn_row, "Queued ✓" if queued else install_label, icon="check" if queued else "install",
-                    variant="secondary" if queued else "success", width=200,
-                    command=lambda: self._wizard_toggle_action(install_key, install_label, "install", install_run))
-                install_btn.pack(side="left", padx=(0, 8))
-                install_btn.set_enabled(install_enabled or queued)
-                no_remove = RoundedButton(btn_row, "Remove", icon="trash", variant="danger", width=130)
-                no_remove.pack(side="left")
-                no_remove.set_enabled(False)
+                btn = RoundedButton(
+                    btn_row, install_label + (" ✓" if queued else ""), icon="install", variant="success", width=220,
+                    command=lambda: self._wizard_toggle_and_advance(
+                        install_key, install_label, "install", install_run, advance=advance),
+                )
+                btn.pack(side="left")
+                btn.set_enabled(install_enabled or queued)
+                if not (install_enabled or queued) and disabled_reason:
+                    callout(body, disabled_reason, "warn")
             card.finalize()
 
         # -- GIMP (prerequisite; mandatory, exclusive choice of method) -------
@@ -2809,15 +2858,13 @@ if _TK_OK:
             pm_selected = self.plan.has("gimp_install_pm")
             ai_selected = self.plan.has("gimp_install_appimage")
             pm_btn = RoundedButton(
-                btn_row, "Queued ✓ — package manager" if pm_selected else "Install via package manager",
-                icon="check" if pm_selected else "install", variant="secondary" if pm_selected else "success",
-                width=270, command=lambda: self._wizard_pick_gimp_method("pm"))
+                btn_row, "Install via package manager" + (" ✓" if pm_selected else ""), icon="install",
+                variant="success", width=270, command=lambda: self._wizard_pick_gimp_method("pm"))
             pm_btn.pack(side="left", padx=(0, 8))
             pm_btn.set_enabled(bool(distro))
             ai_btn = RoundedButton(
-                btn_row, "Queued ✓ — AppImage" if ai_selected else "Install AppImage",
-                icon="check" if ai_selected else "install", variant="secondary" if ai_selected else "success",
-                width=210, command=lambda: self._wizard_pick_gimp_method("appimage"))
+                btn_row, "Install AppImage" + (" ✓" if ai_selected else ""), icon="install",
+                variant="success", width=210, command=lambda: self._wizard_pick_gimp_method("appimage"))
             ai_btn.pack(side="left")
             if not distro:
                 callout(body, "No supported distribution detected (arch, debian, ubuntu, fedora, opensuse) — "
@@ -2835,8 +2882,8 @@ if _TK_OK:
             else:
                 action = PlannedAction("gimp_install_appimage", "Install GIMP (AppImage)", "install",
                                         lambda job: install_gimp_appimage(job))
-            self.plan.toggle(action)
-            self._render_wizard_step()
+            self.plan.add(action)
+            self._wizard_advance()
 
         # -- PhotoGIMP ---------------------------------------------------------
 
@@ -2866,7 +2913,8 @@ if _TK_OK:
                 repair_desktop_integration(job)
 
             def done():
-                self._render_wizard_step()
+                if self.current_screen == "wizard":
+                    self._refresh_wizard_body()
                 show_snackbar(self, "Desktop entry fixed — restart GIMP and re-pin it", tone="ok")
 
             self.run_in_background(task, on_done=done)
@@ -2876,12 +2924,6 @@ if _TK_OK:
         def _wizard_render_gmic(self, parent):
             installed = gmic_installed()
             available = gmic_available_on_this_release()
-
-            def extra(body):
-                if not available:
-                    callout(body, f"No G'MIC package on this distribution release — see {GMIC_DOWNLOAD_PAGE} "
-                                   "for a manual build.", "warn")
-
             self._wizard_toggle_card(
                 parent, key="gmic", installed=installed,
                 status_text="Extra filter collection for GIMP" + (" — installed" if installed else " — not installed"),
@@ -2889,18 +2931,36 @@ if _TK_OK:
                 install_run=lambda job: install_gmic_only(job),
                 uninstall_run=lambda job: remove_gmic_only(job),
                 install_enabled=available,
-                extra=extra,
+                disabled_reason=(None if available else
+                                  f"No G'MIC package on this distribution release — see {GMIC_DOWNLOAD_PAGE} "
+                                  "for a manual build."),
             )
 
         # -- SAM: plug-in + backend + models + SAM 3.1 ---------------------------
+        # The backend only ever makes sense once the plug-in is (or will be)
+        # present, and models only ever make sense once both are — so each
+        # tier gates the next, exactly mirroring what actually has to exist
+        # on disk for SAM to work at all.
+
+        def _sam_plugin_will_be_present(self) -> bool:
+            if self.plan.has("sam_plugin:remove"):
+                return False
+            return segany_plugin_installed() or self.plan.has("sam_plugin:install")
+
+        def _sam_backend_will_be_present(self) -> bool:
+            if self.plan.has("sam_backend:remove"):
+                return False
+            return backend_ready() or self.plan.has("sam_backend:install")
 
         def _wizard_render_sam(self, parent):
+            plugin_ok = self._sam_plugin_will_be_present()
             self._wizard_toggle_card(
                 parent, key="sam_plugin", installed=segany_plugin_installed(),
                 status_text="Plug-in files" + (" — installed" if segany_plugin_installed() else " — not installed"),
                 install_label="Install SAM plug-in",
                 install_run=lambda job: install_segany_plugin(job),
                 uninstall_run=lambda job: remove_segany_plugin(job),
+                advance=False,
             )
 
             ready = backend_ready()
@@ -2928,15 +2988,21 @@ if _TK_OK:
                 install_run=lambda job: install_sam_backend(job, TORCH_INDEX_URLS[self.torch_choice.get()]),
                 uninstall_run=lambda job: remove_sam_backend(job),
                 uninstall_label="Remove backend (+ all models)",
+                install_enabled=plugin_ok,
+                disabled_reason=None if plugin_ok else "Install (or keep) the SAM plug-in above first.",
+                advance=False,
                 extra=backend_extra,
             )
 
+            models_ok = plugin_ok and self._sam_backend_will_be_present()
             autowrap_label(
                 parent,
                 "Quality/Speed are rough 1-5 estimates, comparable within a family. Already-downloaded models "
                 "are never a checkbox again — Remove just queues their deletion for the final install step.",
                 fg=TEXT_MUTED, bg=BG, font=("Sans", 9),
             ).pack(anchor="w", fill="x", pady=(6, 10))
+            if not models_ok:
+                callout(parent, "Models need the plug-in and the Python backend above first.", "warn")
             rec_key = recommended_model_key(self.hw)
             for family in ("SAM1", "SAM2"):
                 fam_card = RoundedCard(parent)
@@ -2944,13 +3010,16 @@ if _TK_OK:
                 head = tk.Frame(fam_card.body, bg=CARD_BG)
                 head.pack(fill="x", pady=(0, 4))
                 tk.Label(head, text=family, bg=CARD_BG, fg=ACCENT, font=("Sans", 11, "bold")).pack(side="left")
-                RoundedButton(head, "Queue all missing", icon="install", variant="secondary", width=170,
-                              command=lambda fam=family: self._wizard_queue_all_models(fam)).pack(side="right")
+                queue_all_btn = RoundedButton(head, "Queue all missing", icon="install", variant="secondary",
+                                               width=170, command=lambda fam=family: self._wizard_queue_all_models(fam))
+                queue_all_btn.pack(side="right")
+                queue_all_btn.set_enabled(models_ok)
                 for spec in [m for m in MODEL_REGISTRY if m.family == family]:
-                    self._wizard_render_model_row(fam_card.body, spec, recommended=(spec.key == rec_key))
+                    self._wizard_render_model_row(fam_card.body, spec, recommended=(spec.key == rec_key),
+                                                   enabled=models_ok)
                 fam_card.finalize()
 
-            self._wizard_render_sam3(parent)
+            self._wizard_render_sam3(parent, enabled=models_ok)
 
         @staticmethod
         def _sam_model_install_run(spec: ModelSpec):
@@ -2978,7 +3047,7 @@ if _TK_OK:
                     job.log(f"ERROR removing {dest}: {e}")
             return run
 
-        def _wizard_render_model_row(self, parent, spec: ModelSpec, recommended: bool):
+        def _wizard_render_model_row(self, parent, spec: ModelSpec, recommended: bool, enabled: bool):
             row = RoundedCard(parent, pad=14, radius=16)
             row.pack(fill="x", pady=6)
             body = row.body
@@ -2997,37 +3066,27 @@ if _TK_OK:
 
             installed = model_installed(spec)
             install_key, remove_key = f"sam_model:{spec.key}:install", f"sam_model:{spec.key}:remove"
-            queued_install = self.plan.has(install_key)
-            queued_remove = self.plan.has(remove_key)
-            status = ("Installed" if installed else
-                      "Queued for install" if queued_install else
-                      "Queued for removal" if queued_remove else "")
-            if status:
-                tk.Label(left, text=status, bg=CARD_BG, fg=(DANGER if queued_remove else SUCCESS),
-                         font=("Sans", 9, "bold")).pack(anchor="w", pady=(4, 0))
 
             right = tk.Frame(top, bg=CARD_BG)
             right.pack(side="right")
             if installed:
-                done_btn = RoundedButton(right, "Installed", icon="check", variant="secondary", width=140)
-                done_btn.pack(side="left", padx=(0, 8))
-                done_btn.set_enabled(False)
-                remove_btn = RoundedButton(
-                    right, "Cancel removal" if queued_remove else "Remove",
-                    icon="undo" if queued_remove else "trash", variant="secondary" if queued_remove else "danger",
-                    width=160, command=lambda: self._wizard_toggle_action(
-                        remove_key, f"Remove {spec.label}", "remove", self._sam_model_remove_run(spec)))
-                remove_btn.pack(side="left")
+                queued = self.plan.has(remove_key)
+                RoundedButton(
+                    right, "Remove" + (" ✓" if queued else ""), icon="trash", variant="danger", width=160,
+                    command=lambda: self._wizard_toggle_and_advance(
+                        remove_key, f"Remove {spec.label}", "remove", self._sam_model_remove_run(spec),
+                        advance=False),
+                ).pack(side="left")
             else:
-                install_btn = RoundedButton(
-                    right, "Queued ✓" if queued_install else "Add to plan",
-                    icon="check" if queued_install else "install", variant="secondary" if queued_install else "success",
-                    width=150, command=lambda: self._wizard_toggle_action(
-                        install_key, f"Download {spec.label}", "install", self._sam_model_install_run(spec)))
-                install_btn.pack(side="left", padx=(0, 8))
-                remove_btn = RoundedButton(right, "Remove", icon="trash", variant="danger", width=160)
-                remove_btn.pack(side="left")
-                remove_btn.set_enabled(False)
+                queued = self.plan.has(install_key)
+                btn = RoundedButton(
+                    right, "Add to plan" + (" ✓" if queued else ""), icon="install", variant="success", width=160,
+                    command=lambda: self._wizard_toggle_and_advance(
+                        install_key, f"Download {spec.label}", "install", self._sam_model_install_run(spec),
+                        advance=False),
+                )
+                btn.pack(side="left")
+                btn.set_enabled(enabled or queued)
             row.finalize()
 
         def _wizard_queue_all_models(self, family: str):
@@ -3040,11 +3099,11 @@ if _TK_OK:
                 if not self.plan.has(key):
                     self.plan.add(PlannedAction(key, f"Download {spec.label}", "install",
                                                  self._sam_model_install_run(spec)))
-            self._render_wizard_step()
+            self._refresh_wizard_body()
 
         # -- SAM 3.1 (gated on Hugging Face) --
 
-        def _wizard_render_sam3(self, parent):
+        def _wizard_render_sam3(self, parent, enabled: bool):
             spec = MODEL_BY_KEY["sam3"]
             installed = model_installed(spec)
             card = RoundedCard(parent)
@@ -3064,13 +3123,6 @@ if _TK_OK:
 
             install_key, remove_key = "sam3:install", "sam3:remove"
             queued_install = self.plan.has(install_key)
-            queued_remove = self.plan.has(remove_key)
-            status = ("Installed" if installed else
-                      "Queued for download" if queued_install else
-                      "Queued for removal" if queued_remove else "")
-            if status:
-                tk.Label(left, text=status, bg=CARD_BG, fg=(DANGER if queued_remove else SUCCESS),
-                         font=("Sans", 9, "bold")).pack(anchor="w", pady=(4, 0))
 
             autowrap_label(
                 body, f"Gated on Hugging Face ({SAM3_HF_REPO_ID}) — request access, wait for approval, then "
@@ -3086,11 +3138,11 @@ if _TK_OK:
             transformers_key = "sam3:transformers"
             t_queued = self.plan.has(transformers_key)
             RoundedButton(
-                row1, "Queued ✓" if t_queued else "Install/upgrade transformers",
-                icon="check" if t_queued else "box", variant="secondary", width=230,
-                command=lambda: self._wizard_toggle_action(
+                row1, "Install/upgrade transformers" + (" ✓" if t_queued else ""), icon="box", variant="success",
+                width=230,
+                command=lambda: self._wizard_toggle_and_advance(
                     transformers_key, "Install/upgrade transformers", "install",
-                    lambda job: install_sam3_transformers(job)),
+                    lambda job: install_sam3_transformers(job), advance=False),
             ).pack(side="left", padx=8)
 
             row2 = tk.Frame(body, bg=CARD_BG)
@@ -3101,35 +3153,31 @@ if _TK_OK:
             flatten_entry(hf_entry)
 
             if installed:
-                done_btn = RoundedButton(row2, "Installed", icon="check", variant="secondary", width=140)
-                done_btn.pack(side="left", padx=(0, 8))
-                done_btn.set_enabled(False)
-                remove_btn = RoundedButton(
-                    row2, "Cancel removal" if queued_remove else "Remove",
-                    icon="undo" if queued_remove else "trash", variant="secondary" if queued_remove else "danger",
-                    width=130, command=lambda: self._wizard_toggle_action(remove_key, "Remove SAM 3.1", "remove",
-                                                                           lambda job: remove_sam3(job)))
-                remove_btn.pack(side="left")
+                queued_remove = self.plan.has(remove_key)
+                RoundedButton(
+                    row2, "Remove" + (" ✓" if queued_remove else ""), icon="trash", variant="danger", width=130,
+                    command=lambda: self._wizard_toggle_and_advance(
+                        remove_key, "Remove SAM 3.1", "remove", lambda job: remove_sam3(job), advance=False),
+                ).pack(side="left")
             else:
                 def token_ok():
                     return queued_install or bool(self.hf_token_var.get().strip())
 
                 dl_btn = RoundedButton(
-                    row2, "Queued ✓" if queued_install else "Add to plan",
-                    icon="check" if queued_install else "install", variant="secondary" if queued_install else "success",
+                    row2, "Add to plan" + (" ✓" if queued_install else ""), icon="install", variant="success",
                     width=140,
-                    command=lambda: self._wizard_toggle_action(
-                        install_key, "Download SAM 3.1", "install",
-                        lambda job: self._run_sam3_download(job)),
+                    command=lambda: self._wizard_toggle_and_advance(
+                        install_key, "Download SAM 3.1", "install", lambda job: self._run_sam3_download(job),
+                        advance=False),
                     on_blocked=lambda: show_snackbar(self, "Enter a Hugging Face token first", tone="warn"),
                 )
                 dl_btn.pack(side="left", padx=(0, 8))
-                dl_btn.set_enabled(token_ok())
-                trace_id = self.hf_token_var.trace_add("write", lambda *_a: dl_btn.set_enabled(token_ok()))
+                dl_btn.set_enabled(enabled and token_ok())
+                trace_id = self.hf_token_var.trace_add(
+                    "write", lambda *_a: dl_btn.set_enabled(enabled and token_ok()))
                 dl_btn.bind("<Destroy>", lambda _e, tid=trace_id: self.hf_token_var.trace_remove("write", tid))
-                no_remove = RoundedButton(row2, "Remove", icon="trash", variant="danger", width=130)
-                no_remove.pack(side="left")
-                no_remove.set_enabled(False)
+            if not enabled:
+                callout(body, "Needs the plug-in and the Python backend above first.", "warn")
             card.finalize()
 
         def _run_sam3_download(self, job: Job):
@@ -3164,26 +3212,47 @@ if _TK_OK:
                          bg=CARD_BG, fg=TEXT_MUTED, font=("Sans", 10)).pack(anchor="w")
                 card.finalize()
                 return
-            for action in self.plan:
+
+            # SAM models are queued one-by-one so each page can show its own
+            # state, but a dozen "Download vit_b" / "Download vit_l" lines
+            # here would just be noise — collapse them into one summary row.
+            sam_installs = [a for a in self.plan if a.key.startswith("sam_model:") and a.kind == "install"]
+            sam_removes = [a for a in self.plan if a.key.startswith("sam_model:") and a.kind == "remove"]
+            grouped_keys = {a.key for a in sam_installs + sam_removes}
+            other_actions = [a for a in self.plan if a.key not in grouped_keys]
+
+            def add_row(label: str, kind: str, step_key: str, keys: list[str]):
                 row = RoundedCard(parent, pad=14, radius=14)
                 row.pack(fill="x", pady=5)
                 line = tk.Frame(row.body, bg=CARD_BG)
                 line.pack(fill="x")
-                icon_canvas(line, "trash" if action.kind == "remove" else "install",
-                            color=DANGER if action.kind == "remove" else SUCCESS, size=16,
+                icon_canvas(line, "trash" if kind == "remove" else "install",
+                            color=DANGER if kind == "remove" else SUCCESS, size=16,
                             bg=CARD_BG).pack(side="left", padx=(0, 10))
-                tk.Label(line, text=action.label, bg=CARD_BG, fg=TEXT, font=("Sans", 10, "bold")).pack(
+                tk.Label(line, text=label, bg=CARD_BG, fg=TEXT, font=("Sans", 10, "bold")).pack(
                     side="left", fill="x", expand=True)
-                RoundedButton(line, "✕", variant="secondary", width=36,
-                              command=lambda k=action.key: self._wizard_discard_action(k)).pack(side="right")
+                trash_btn = RoundedButton(line, "", icon="trash", variant="secondary", width=40,
+                                           command=lambda: self._wizard_discard_many(keys))
+                trash_btn.pack(side="right")
                 row.finalize()
+                bind_click_recursive(row, lambda sk=step_key: self._wizard_jump_to_step(sk), skip=(trash_btn,))
+
+            for action in other_actions:
+                add_row(action.label, action.kind, self._wizard_step_key_for_action(action.key), [action.key])
+            if sam_installs:
+                add_row(f"Download {len(sam_installs)} SAM model" + ("s" if len(sam_installs) != 1 else ""),
+                        "install", "sam", [a.key for a in sam_installs])
+            if sam_removes:
+                add_row(f"Remove {len(sam_removes)} SAM model" + ("s" if len(sam_removes) != 1 else ""),
+                        "remove", "sam", [a.key for a in sam_removes])
 
             RoundedButton(parent, f"Proceed to installation ({len(self.plan)})", icon="bolt", variant="primary",
                           width=320, height=44, command=self._wizard_start_install).pack(anchor="w", pady=(14, 0))
 
-        def _wizard_discard_action(self, key: str):
-            self.plan.discard(key)
-            self._render_wizard_step()
+        def _wizard_discard_many(self, keys: list[str]):
+            for key in keys:
+                self.plan.discard(key)
+            self._refresh_wizard_body()
 
         def _wizard_start_install(self):
             self.show_install_progress(list(self.plan))
