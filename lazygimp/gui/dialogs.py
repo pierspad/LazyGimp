@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ..compat import simpledialog, tk
+from ..compat import ctk, tk
 from .helpers import autowrap_label
 from .icons import icon_canvas
 from .theme import BG, CARD_BG, F_BODY, F_BODY_B, F_DIALOG_TITLE, TEXT, TEXT_MUTED, TONE_COLORS
@@ -57,7 +57,7 @@ def show_snackbar(app, message: str, tone: str = "warn", duration_ms: int = 2200
     win = tk.Toplevel(root)
     win.overrideredirect(True)
     win.attributes("-topmost", True)
-    win.configure(bg=root["bg"])
+    win.configure(bg=BG)
     card = RoundedCard(win, bg=bgc, border=bgc, radius=14, pad=14)
     card.pack()
     row = tk.Frame(card.body, bg=bgc)
@@ -73,6 +73,9 @@ def show_snackbar(app, message: str, tone: str = "warn", duration_ms: int = 2200
     win.after(duration_ms, lambda: win.destroy() if win.winfo_exists() else None)
 
 class TkPasswordPrompt:
+    """Themed modal password prompt for the sudo install path. Called from
+    the worker thread; the dialog itself runs on the Tk main loop."""
+
     def __init__(self, root):
         self.root = root
 
@@ -81,14 +84,55 @@ class TkPasswordPrompt:
         done = threading.Event()
 
         def ask():
-            result["pw"] = simpledialog.askstring(
-                "Password required",
-                f"{prompt_text}\n\n(needed to install/remove system packages; this is your normal "
-                "login password, sent straight to sudo, never stored)",
-                show="*", parent=self.root,
-            )
-            done.set()
+            try:
+                result["pw"] = self._show(prompt_text)
+            finally:
+                done.set()
 
         self.root.after(0, ask)
         done.wait()
         return result.get("pw") or ""
+
+    def _show(self, prompt_text: str) -> str:
+        win = tk.Toplevel(self.root)
+        win.configure(bg=BG)
+        win.title("Password required")
+        win.transient(self.root)
+        win.resizable(False, False)
+        card = RoundedCard(win, radius=18, pad=20, width=420)
+        card.pack(padx=2, pady=2)
+        tk.Label(card.body, text="Administrator password", bg=CARD_BG, fg=TEXT,
+                 font=F_DIALOG_TITLE).pack(anchor="w")
+        autowrap_label(
+            card.body,
+            f"{prompt_text}\n\nNeeded to install/remove system packages — your normal login "
+            "password, sent straight to sudo, never stored.",
+            fg=TEXT_MUTED, bg=CARD_BG, font=F_BODY,
+        ).pack(anchor="w", fill="x", pady=(10, 14))
+        pw_var = tk.StringVar()
+        entry = ctk.CTkEntry(card.body, textvariable=pw_var, show="•", width=360)
+        entry.pack(anchor="w", pady=(0, 16))
+        result = {"pw": ""}
+        btns = tk.Frame(card.body, bg=CARD_BG)
+        btns.pack(anchor="e")
+
+        def close(ok: bool):
+            result["pw"] = pw_var.get() if ok else ""
+            win.destroy()
+
+        RoundedButton(btns, "Cancel", variant="secondary", width=90,
+                      command=lambda: close(False)).pack(side="left", padx=(0, 8))
+        RoundedButton(btns, "Unlock", variant="primary", width=110,
+                      command=lambda: close(True)).pack(side="left")
+        win.bind("<Return>", lambda _e: close(True))
+        win.bind("<Escape>", lambda _e: close(False))
+        card.finalize()
+        win.update_idletasks()
+        rx, ry = self.root.winfo_rootx(), self.root.winfo_rooty()
+        rw, rh = self.root.winfo_width(), self.root.winfo_height()
+        ww, wh = win.winfo_reqwidth(), win.winfo_reqheight()
+        win.geometry(f"+{rx + max(0, (rw - ww) // 2)}+{ry + max(0, (rh - wh) // 2)}")
+        entry.focus_set()
+        win.grab_set()
+        win.wait_window()
+        return result["pw"]

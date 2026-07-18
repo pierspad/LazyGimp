@@ -1,24 +1,26 @@
-"""The optional Tkinter GUI, as a package:
+"""The optional GUI (CustomTkinter), as a package:
 
-    theme.py     design tokens — every color, font, ttk style
+    theme.py     design tokens — every color, font, appearance setting
     icons.py     vector icons (Pillow-antialiased when available)
     helpers.py   drawing/layout primitives
-    widgets.py   RoundedButton, RoundedCard, ProgressBar, … (incremental
-                 rendering: itemconfig/coords, never delete-all-and-redraw)
+    widgets.py   the same widget API as always, CustomTkinter engine
     dialogs.py   themed dialogs, snackbar, sudo password prompt
     state.py     "what's installed" in the uninstall screen's vocabulary
     app.py       LazyGimpApp — plumbing + page mixins composition
     pages/       one module per screen (landing/uninstall/wizard/progress)
 
 Only this __init__ is safe to import headless: the submodules assume a
-working Tk and are imported lazily by launch_gui(), so `python3 lazygimp.py
-status` keeps working on a box with no python3-tk at all.
+working Tk + customtkinter and are imported lazily by launch_gui(), so
+`python3 lazygimp.py status` keeps working on a box with neither.
+
+The prebuilt binary bundles customtkinter (and Pillow); from a source
+checkout or the .pyz the GUI needs one `pip install customtkinter`.
 """
 from __future__ import annotations
 
 import sys
 
-from ..compat import _TK_OK, tk
+from ..compat import _CTK_OK, _TK_OK, ctk
 from ..util import _self_destruct_if_ephemeral
 
 
@@ -28,8 +30,16 @@ def launch_gui():
               "package for your distro) to use the graphical installer, or use the CLI: "
               "python3 lazygimp.py --help", file=sys.stderr)
         sys.exit(1)
+    if not _CTK_OK:
+        print("[fail] The GUI needs the customtkinter package:\n"
+              "         pip install customtkinter\n"
+              "       (the prebuilt lazygimp-linux-x86_64 binary ships it already, and the\n"
+              "       CLI works without it: python3 lazygimp.py --help)", file=sys.stderr)
+        sys.exit(1)
     from .app import LazyGimpApp
-    root = tk.Tk()
+    from .theme import BG
+    ctk.set_appearance_mode("dark")
+    root = ctk.CTk(fg_color=BG)
     LazyGimpApp(root)
     try:
         root.mainloop()

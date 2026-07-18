@@ -60,7 +60,11 @@ def _install_artifact_paths() -> list[str]:
 
 
 def _self_destruct_if_ephemeral() -> None:
-    ephemeral = "--ephemeral" in sys.argv or os.environ.get("LAZYGIMP_INSTALLER_EPHEMERAL") == "1"
+    # The env var is authoritative when set (the GUI's "delete this
+    # installer" checkbox writes it, so un-ticking beats --ephemeral);
+    # otherwise the CLI flag decides.
+    env = os.environ.get("LAZYGIMP_INSTALLER_EPHEMERAL")
+    ephemeral = (env == "1") if env is not None else ("--ephemeral" in sys.argv)
     if not ephemeral:
         return
     for path in _install_artifact_paths():

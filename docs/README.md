@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/pierspad/LazyGimp/actions/workflows/ci.yml/badge.svg)](https://github.com/pierspad/LazyGimp/actions/workflows/ci.yml)
 [![Release](https://github.com/pierspad/LazyGimp/actions/workflows/release.yml/badge.svg)](https://github.com/pierspad/LazyGimp/actions/workflows/release.yml)
-[![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](../LICENSE)
 
 LazyGimp is a single installer app — a dark-themed GUI plus a full CLI — that installs GIMP (package manager or AppImage), applies PhotoGIMP, and sets up G'MIC, Batcher and Segment Anything (SAM). No arguments opens the GUI; every action is also a plain CLI command for headless boxes.
 
@@ -14,9 +14,11 @@ Pick **one** of the three release artifacts — they are the same program, packa
 
 | Artifact | Requirements | How to run |
 |---|---|---|
-| [`lazygimp-linux-x86_64`](https://github.com/pierspad/LazyGimp/releases/latest/download/lazygimp-linux-x86_64) | none (self-contained binary) | `chmod +x lazygimp-linux-x86_64 && ./lazygimp-linux-x86_64` |
-| [`lazygimp.pyz`](https://github.com/pierspad/LazyGimp/releases/latest/download/lazygimp.pyz) | `python3` + Tk (`python3-tk` on Debian/Ubuntu) | `python3 lazygimp.pyz` |
-| [`lazygimp-src.zip`](https://github.com/pierspad/LazyGimp/releases/latest/download/lazygimp-src.zip) | `python3` + Tk | see below |
+| [`lazygimp-linux-x86_64`](https://github.com/pierspad/LazyGimp/releases/latest/download/lazygimp-linux-x86_64) | none (self-contained: Python, Tk, GUI toolkit all inside) | `chmod +x lazygimp-linux-x86_64 && ./lazygimp-linux-x86_64` |
+| [`lazygimp.pyz`](https://github.com/pierspad/LazyGimp/releases/latest/download/lazygimp.pyz) | `python3` + Tk; GUI also needs `pip install customtkinter` (CLI doesn't) | `python3 lazygimp.pyz` |
+| [`lazygimp-src.zip`](https://github.com/pierspad/LazyGimp/releases/latest/download/lazygimp-src.zip) | same as the `.pyz` | see below |
+
+The binary is the recommended download: it's disposable by design — tick *"Delete this installer when it closes"* on its start screen (or launch with `--ephemeral`) and it removes itself once you're done, leaving the folder clean.
 
 One-liner (binary, zero dependencies):
 
@@ -42,7 +44,7 @@ python3 lazygimp.py            # GUI  (equivalent: python3 -m lazygimp)
 python3 lazygimp.py status     # CLI
 ```
 
-The only requirement is Python 3.10+ with Tkinter (`sudo apt install python3-tk` on Debian/Ubuntu; usually preinstalled elsewhere). The CLI works even without Tk. [Pillow](https://python-pillow.org) is optional — nicer anti-aliased icons if present.
+Requirements when running from source or the `.pyz`: Python 3.10+ with Tkinter (`sudo apt install python3-tk` on Debian/Ubuntu; usually preinstalled elsewhere) and, for the GUI only, [CustomTkinter](https://customtkinter.tomschimansky.com) (`pip install customtkinter`). The CLI needs neither. [Pillow](https://python-pillow.org) is optional — nicer anti-aliased icons if present. The prebuilt binary bundles everything.
 
 ### CLI in 20 seconds
 
@@ -122,44 +124,6 @@ The exact values are saved in `~/.local/share/lazygimp/segany/INFO.txt`. Checkpo
 
 Every action is **idempotent** — re-running is the supported way to update or repair. Whatever is already present and valid is kept (native packages, an intact AppImage of the same version, the SAM virtualenv and any checkpoint already downloaded are never re-fetched); whatever is missing is added; whatever LazyGimp manages (PhotoGIMP layer, plug-in folders) is **brutally overwritten** with the current version — after the usual timestamped backup of your GIMP configuration. Your personal files (brushes, scripts, your own plug-ins) are never touched.
 
-## Project layout
-
-```
-lazygimp.py          thin launcher (python3 lazygimp.py == python3 -m lazygimp)
-lazygimp/            the actual package
-  constants.py       where things live on disk + upstream version pins
-  models.py          SAM model registry
-  hardware.py        GPU/CPU detection (picks a sane default model)
-  distro.py          distro / package-manager abstraction
-  gimp_detect.py     which GIMP is installed, where its config lives
-  job.py             background work, logging, sudo-over-pty
-  plan.py            the wizard's data model (planned actions)
-  gimp_install.py    GIMP via package manager or AppImage
-  photogimp.py       the PhotoGIMP configuration layer
-  plugins.py         plug-in folders (Batcher, seganyplugin)
-  sam_backend.py     SAM venv + PyTorch backend
-  sam3.py            SAM 3.1 (gated on Hugging Face)
-  gui/               the Tkinter app (optional — needs python3-tk)
-    theme.py         design tokens: every color, font and ttk style
-    icons.py         vector icons (Pillow-antialiased when available)
-    helpers.py       drawing/layout primitives
-    widgets.py       canvas widgets, incremental rendering (no full redraws)
-    dialogs.py       themed dialogs, snackbar, sudo password prompt
-    state.py         "what's installed" for the uninstall screen
-    app.py           LazyGimpApp: plumbing + page-mixin composition
-    pages/           one module per screen (landing/uninstall/wizard/progress)
-  cli.py             argparse commands + main()
-tests/               stdlib-only smoke tests (python3 -m unittest discover -s tests)
-                     + tests/gui_smoke.py (real GUI under Xvfb, run by CI)
-scripts/             release asset build (zipapp + PyInstaller + zip)
-windows/             Windows installer script
-```
-
-## Contributing
-
-Commits follow [Conventional Commits](https://www.conventionalcommits.org): `feat:` (minor), `fix:`/`perf:`/`refactor:` (patch), `docs:`/`chore:` (no release), `BREAKING CHANGE:` (major). Every push to `main` is released automatically — version bump, changelog, tag, GitHub release and backmerge to `dev` are handled by [semantic-release](../.releaserc); pushes to `dev` publish pre-releases. CI gates every PR with ruff, the smoke tests on Python 3.10/3.12/3.13, a full dry-run build of the release assets, actionlint and PSScriptAnalyzer.
-
-To support a new distribution, extend the family tables in [`lazygimp/distro.py`](../lazygimp/distro.py) — one entry with the package names and commands for your package manager.
 
 ## Credits & licenses
 
@@ -172,11 +136,23 @@ LazyGimp is a thin installer/configurator: it **does not bundle or redistribute*
 | [G'MIC](https://gmic.eu) | GREYC / D. Tschumperlé et al. | 500+ image filters | [CeCILL 2.1 / CeCILL-C](https://gmic.eu/download.html) |
 | [Batcher](https://github.com/kamilburda/batcher) | Kamil Burda | Batch processing & layer export | [BSD-3-Clause](https://github.com/kamilburda/batcher/blob/main/LICENSE) |
 | [gimpsegany](https://github.com/Shriinivas/gimpsegany) | Shriinivas | Segment Anything integration | [AGPL-3.0](https://github.com/Shriinivas/gimpsegany/blob/main/LICENSE) |
-| [Segment Anything](https://github.com/facebookresearch/segment-anything) (SAM1) | Meta AI | AI model behind gimpsegany | [Apache-2.0](https://github.com/facebookresearch/segment-anything/blob/main/LICENSE) |
-| [Segment Anything 2](https://github.com/facebookresearch/sam2) (SAM2) | Meta AI | AI model behind gimpsegany | [Apache-2.0](https://github.com/facebookresearch/sam2/blob/main/LICENSE) |
+| [GIMPSAM](https://github.com/pierspad/GIMPSAM) | //TODO | //TODO | //TODO |
 
-License compatibility: LazyGimp itself is GPL-3.0. Since we only *invoke and download* the projects above (mere aggregation, no derived work), no license conflict can arise. Even in the strictest reading, every license in the table is GPL-3.0-compatible: GPL-3.0 (same), BSD-3-Clause and Apache-2.0 (permissive, one-way compatible), CeCILL 2.1 (explicitly GPL-compatible, art. 5.3.4), AGPL-3.0 (linkable with GPL-3.0 per GPLv3 §13).
+
+---
+
+## Contributing
+
+Pull requests are welcome! For major changes, please open an issue first to discuss your ideas.
+
+---
+
+## AI Disclosure
+
+This project was developed with the assistance of Large Language Models, used to support code writing and documentation.
+
+---
 
 ## License
 
-[GPL-3.0](LICENSE)
+This project is licensed under the GPL v3 License — see the [LICENSE](../LICENSE) file for details.

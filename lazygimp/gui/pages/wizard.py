@@ -4,7 +4,7 @@ self.plan; nothing here touches disk."""
 
 from __future__ import annotations
 
-from ...compat import tk, ttk
+from ...compat import ctk, tk
 from ...constants import APPIMAGE_DIR, GMIC_DOWNLOAD_PAGE, SAM3_HF_PAGE, SAM3_HF_REPO_ID, TORCH_INDEX_URLS, VENV_DIR
 from ...distro import detect_distro
 from ...gimp_detect import find_gimp_command
@@ -18,7 +18,7 @@ from ...plugins import batcher_installed, install_batcher, install_segany_plugin
 from ...sam3 import download_sam3, remove_sam3, sam3_failure_message
 from ...sam_backend import backend_ready, install_sam3_transformers, install_sam_backend, remove_sam_backend, venv_exists, write_sam_info
 from ..dialogs import show_snackbar, themed_confirm, themed_info
-from ..helpers import autowrap_label, flatten_entry, rating_widget
+from ..helpers import autowrap_label, rating_widget
 from ..icons import icon_canvas
 from ..theme import ACCENT, BG, CARD_BG, DANGER, F_BODY, F_BODY_B, F_H3, F_ITEM_TITLE, F_SECTION, F_SMALL, F_SMALL_B, SUCCESS, TEXT, TEXT_MUTED
 from ..widgets import RoundedButton, RoundedCard, ScrollableFrame, bind_click_recursive, callout
@@ -402,10 +402,9 @@ class WizardPages:
             callout(body, "Not set up yet.", "warn")
         tk.Label(body, text="PyTorch build", bg=CARD_BG, fg=TEXT, font=F_BODY_B).pack(
             anchor="w", pady=(8, 6))
-        combo = ttk.Combobox(body, textvariable=self.torch_choice, values=list(TORCH_INDEX_URLS.keys()),
-                              state="readonly", width=34, font=F_BODY)
+        combo = ctk.CTkComboBox(body, variable=self.torch_choice, values=list(TORCH_INDEX_URLS.keys()),
+                                state="readonly", width=320, font=F_BODY)
         combo.pack(anchor="w", pady=(0, 6))
-        flatten_entry(combo)
 
         btn_row = tk.Frame(body, bg=CARD_BG)
         btn_row.pack(fill="x", pady=(6, 0))
@@ -599,9 +598,8 @@ class WizardPages:
         row2 = tk.Frame(body, bg=CARD_BG)
         row2.pack(fill="x")
         tk.Label(row2, text="HF token", bg=CARD_BG, fg=TEXT, font=F_BODY_B).pack(side="left")
-        hf_entry = ttk.Entry(row2, textvariable=self.hf_token_var, show="*", width=30, font=F_BODY)
-        hf_entry.pack(side="left", padx=8, ipady=3)
-        flatten_entry(hf_entry)
+        hf_entry = ctk.CTkEntry(row2, textvariable=self.hf_token_var, show="•", width=280, font=F_BODY)
+        hf_entry.pack(side="left", padx=8)
 
         gate_note = callout(body, "Needs the SAM setup above first.", "warn")
 

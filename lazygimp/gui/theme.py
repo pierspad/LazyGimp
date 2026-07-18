@@ -58,30 +58,13 @@ F_MONO = ("Monospace", 10)
 
 
 def apply_style(root) -> None:
-    """Configure the ttk styles + option database for the dark theme."""
+    """Window-level theming. Widget colors are passed explicitly from this
+    module's tokens (see widgets.py), so there is deliberately little here:
+    CustomTkinter's appearance mode is set in launch_gui(), and the ttk
+    styles of the old engine are gone with the ttk widgets themselves."""
     style = ttk.Style()
     try:
         style.theme_use("clam")
     except tk.TclError:
         pass
-    style.configure("TEntry", fieldbackground=FIELD_BG, foreground=TEXT, insertcolor=TEXT,
-                    bordercolor=FIELD_BG, lightcolor=FIELD_BG, darkcolor=FIELD_BG,
-                    borderwidth=0, relief="flat", padding=6)
-    style.configure("TCombobox", fieldbackground=FIELD_BG, background=FIELD_BG, foreground=TEXT,
-                    arrowcolor=TEXT, bordercolor=FIELD_BG, lightcolor=FIELD_BG, darkcolor=FIELD_BG,
-                    borderwidth=0, relief="flat", padding=6)
-    style.map("TCombobox", fieldbackground=[("readonly", FIELD_BG)], foreground=[("readonly", TEXT)],
-              background=[("readonly", FIELD_BG)])
-    style.layout("Modern.Vertical.TScrollbar", [
-        ("Vertical.Scrollbar.trough", {"children": [
-            ("Vertical.Scrollbar.thumb", {"expand": "1", "sticky": "nswe"}),
-        ], "sticky": "ns"}),
-    ])
-    style.configure("Modern.Vertical.TScrollbar", gripcount=0, background=SCROLLBAR,
-                    troughcolor=BG, bordercolor=BG, lightcolor=SCROLLBAR, darkcolor=SCROLLBAR,
-                    relief="flat", width=8, arrowsize=0)
     style.configure("TSeparator", background=CARD_BORDER)
-    root.option_add("*TCombobox*Listbox.background", FIELD_BG)
-    root.option_add("*TCombobox*Listbox.foreground", TEXT)
-    root.option_add("*TCombobox*Listbox.selectBackground", ACCENT)
-    root.option_add("*TCombobox*Listbox.selectForeground", ACCENT_TEXT)

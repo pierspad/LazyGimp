@@ -52,6 +52,8 @@ python3 -m zipapp "$PYZ_STAGE" \
 chmod +x "${DIST}/lazygimp.pyz"
 
 # --- 2. PyInstaller: self-contained Linux binary ---------------------------
+# customtkinter (pure python + json/font assets) and Pillow ship inside the
+# binary, so the downloaded file needs nothing at all on the host system.
 pyinstaller --onefile --clean --noconfirm \
   --name "lazygimp-linux-x86_64" \
   --distpath "$DIST" \
@@ -59,6 +61,8 @@ pyinstaller --onefile --clean --noconfirm \
   --specpath "${STAGE}/pyi-spec" \
   --paths "$BUNDLE" \
   --hidden-import tkinter \
+  --collect-all customtkinter \
+  --collect-submodules PIL \
   "${BUNDLE}/lazygimp.py"
 
 # --- 3. source zip: the folder with everything needed to run ---------------

@@ -22,3 +22,13 @@ try:
 except ImportError:  # pragma: no cover - Pillow is optional
     Image = ImageDraw = ImageTk = None  # type: ignore[assignment]
     _PIL_OK = False
+
+# CustomTkinter powers the GUI's look. It is bundled in the prebuilt
+# binary; from a source checkout / the .pyz it's one `pip install
+# customtkinter` away. The CLI never needs it.
+try:
+    import customtkinter as ctk
+    _CTK_OK = _TK_OK
+except ImportError:  # pragma: no cover
+    ctk = None  # type: ignore[assignment]
+    _CTK_OK = False

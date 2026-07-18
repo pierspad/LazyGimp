@@ -19,8 +19,10 @@ from ..helpers import autowrap_label
 from ..icons import icon_canvas
 from ..state import anything_installed
 from ..theme import BG, CARD_BG, F_CARD_TITLE, F_HERO, F_SMALL, F_SUBTITLE, TEXT, TEXT_MUTED
-from ..widgets import RoundedButton, RoundedCard, bind_click_recursive
+from ..widgets import ModernCheckbox, RoundedButton, RoundedCard, bind_click_recursive
+import os
 import subprocess
+import sys
 
 
 class LandingPage:
@@ -90,6 +92,22 @@ class LandingPage:
                               command=self.launch_gimp_and_close).pack(pady=(0, 10))
             RoundedButton(btn_row, "Uninstall from this system", variant="danger", icon="trash", width=340,
                           command=self.show_uninstall_confirm).pack()
+
+        # The installer is disposable by design: this drives the same
+        # --ephemeral self-destruction (binary, .pyz or source folder) via
+        # the env flag util._self_destruct_if_ephemeral() checks on exit.
+        eph_row = tk.Frame(center, bg=BG)
+        eph_row.pack(pady=(22, 0))
+        self._ephemeral_var = tk.BooleanVar(
+            value="--ephemeral" in sys.argv or os.environ.get("LAZYGIMP_INSTALLER_EPHEMERAL") == "1")
+
+        def sync_ephemeral():
+            os.environ["LAZYGIMP_INSTALLER_EPHEMERAL"] = "1" if self._ephemeral_var.get() else "0"
+
+        ModernCheckbox(eph_row, self._ephemeral_var, command=sync_ephemeral, bg=BG).pack(side="left", padx=(0, 8))
+        tk.Label(eph_row, text="Delete this installer when it closes — leaves the folder clean",
+                 bg=BG, fg=TEXT_MUTED, font=F_SMALL).pack(side="left")
+        sync_ephemeral()
 
     def launch_gimp_and_close(self):
         cmd = find_gimp_command()

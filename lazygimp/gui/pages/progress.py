@@ -3,10 +3,10 @@ sequentially in one background thread, with live progress + log."""
 
 from __future__ import annotations
 
-from ...compat import tk, ttk
+from ...compat import ctk, tk
 from ...job import Job
 from ...plan import PlannedAction
-from ..theme import BG, CARD_BG, CARD_BORDER, F_BODY, F_H2, F_MONO, LOG_BG, TEXT, TEXT_MUTED
+from ..theme import BG, CARD_BORDER, F_BODY, F_H2, F_MONO, LOG_BG, TEXT, TEXT_MUTED
 from ..widgets import ProgressBar, RoundedButton
 
 
@@ -55,17 +55,11 @@ class InstallProgressPage:
         # a plain bordered Frame instead, which correctly stretches to
         # fill whatever vertical space is left (fill="both", expand=True
         # all the way down this chain).
-        log_frame = tk.Frame(content, bg=CARD_BG, highlightbackground=CARD_BORDER, highlightthickness=1)
-        log_frame.pack(fill="both", expand=True, pady=(16, 0))
-        text_frame = tk.Frame(log_frame, bg=CARD_BG)
-        text_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        self.exec_log_text = tk.Text(text_frame, bg=LOG_BG, fg=TEXT, insertbackground=TEXT, relief="flat",
-                                      wrap="word", font=F_MONO, padx=8, pady=6, state="disabled")
-        sb = ttk.Scrollbar(text_frame, orient="vertical", command=self.exec_log_text.yview,
-                            style="Modern.Vertical.TScrollbar")
-        self.exec_log_text.configure(yscrollcommand=sb.set)
-        self.exec_log_text.pack(side="left", fill="both", expand=True)
-        sb.pack(side="right", fill="y")
+        self.exec_log_text = ctk.CTkTextbox(content, fg_color=LOG_BG, text_color=TEXT,
+                                            corner_radius=12, border_width=1,
+                                            border_color=CARD_BORDER, wrap="word",
+                                            font=F_MONO, state="disabled")
+        self.exec_log_text.pack(fill="both", expand=True, pady=(16, 0))
         self._append_exec_log_lines(self._exec_log_lines)
 
         btn_row = tk.Frame(content, bg=BG)

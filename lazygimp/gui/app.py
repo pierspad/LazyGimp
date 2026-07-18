@@ -17,7 +17,6 @@ from .dialogs import TkPasswordPrompt, themed_info
 from .icons import blit_icon
 from .pages import InstallProgressPage, LandingPage, UninstallPage, WizardPages
 from .theme import ACCENT, BG, F_SMALL, TEXT_MUTED
-from .widgets import ScrollableFrame
 
 
 class LazyGimpApp(LandingPage, UninstallPage, WizardPages, InstallProgressPage):
@@ -26,7 +25,6 @@ class LazyGimpApp(LandingPage, UninstallPage, WizardPages, InstallProgressPage):
         root.title("LazyGimp installer")
         root.geometry("1040x800")
         root.minsize(920, 660)
-        root.configure(bg=BG)
         theme.apply_style(root)
 
         self.log_queue: "queue.Queue[str]" = queue.Queue()
@@ -44,35 +42,10 @@ class LazyGimpApp(LandingPage, UninstallPage, WizardPages, InstallProgressPage):
         self.plan_actions: list[PlannedAction] = []
         self._exec_log_lines: list[str] = []
 
-        # ONE wheel binding for the whole app: events are routed to the
-        # ScrollableFrame (if any) under the widget that received them —
-        # no recursive per-child binding, no re-binding on page refresh.
-        for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
-            root.bind_all(seq, self._on_global_wheel, add="+")
-
         self.root_frame = tk.Frame(root, bg=BG)
         self.root_frame.pack(fill="both", expand=True)
         self.show_landing()
         self.root.after(150, self._drain_log_queue)
-
-    # ---- global mouse-wheel routing -----------------------------------
-
-    def _on_global_wheel(self, event):
-        w = event.widget
-        if not isinstance(w, tk.Misc):  # e.g. destroyed widget or menu path
-            return
-        while w is not None and not isinstance(w, ScrollableFrame):
-            w = getattr(w, "master", None)
-        if w is None:
-            return
-        num = getattr(event, "num", None)
-        delta = getattr(event, "delta", 0)
-        if num == 4:
-            w.scroll_units(-2)
-        elif num == 5:
-            w.scroll_units(2)
-        elif delta:
-            w.scroll_units(-1 if delta > 0 else 1)
 
     # ---- status bar -----------------------------------------------------
 

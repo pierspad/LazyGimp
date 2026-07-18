@@ -28,11 +28,6 @@ def autowrap_label(parent, text, fg=TEXT_MUTED, bg=None, font=F_SMALL, justify="
     lbl.bind("<Configure>", _resize)
     return lbl
 
-def flatten_entry(entry, bg=CARD_BG):
-    try:
-        entry.configure(highlightthickness=0, highlightbackground=bg, highlightcolor=bg)
-    except tk.TclError:
-        pass
 
 def rating_widget(parent, quality, speed, bg=CARD_BG):
     row = tk.Frame(parent, bg=bg)

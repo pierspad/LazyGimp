@@ -16,16 +16,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from lazygimp.compat import _TK_OK, tk  # noqa: E402
+from lazygimp.compat import _CTK_OK, _TK_OK, ctk  # noqa: E402
 
 if not _TK_OK:
     print("tkinter is not available — this smoke test needs python3-tk", file=sys.stderr)
     sys.exit(2)
+if not _CTK_OK:
+    print("customtkinter is not available — pip install customtkinter", file=sys.stderr)
+    sys.exit(2)
 
 from lazygimp.gui.app import LazyGimpApp  # noqa: E402
+from lazygimp.gui.theme import BG  # noqa: E402
 
 failures: list[str] = []
-root = tk.Tk()
+ctk.set_appearance_mode("dark")
+root = ctk.CTk(fg_color=BG)
 
 
 def fail(kind, exc, tb):
