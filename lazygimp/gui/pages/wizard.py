@@ -59,6 +59,8 @@ class WizardPages:
         self._prev_wizard_index = 0
         self._current_wizard_frame = None
         self._wizard_animating = False
+        self._wizard_cards = {}
+        self._review_rows_discard_commands = []
         self._render_wizard_step()
 
     def _build_wizard_steps(self) -> list[WizardStep]:
@@ -348,6 +350,8 @@ class WizardPages:
                     self._wizard_next_btn.set_enabled(self._wizard_can_advance())
                 # Update card UI state in-place without page reload!
                 update_card_ui()
+
+        self._wizard_cards[key] = on_card_click
 
         def update_card_ui():
             q = self.plan.has(action_key)
@@ -697,6 +701,7 @@ class WizardPages:
             dropdown_fg_color=FIELD_BG, dropdown_hover_color=SECONDARY_HOVER,
             dropdown_text_color=TEXT, dropdown_font=F_BODY)
         combo.pack(side="left")
+        self._pytorch_combo = combo
         
         # Bind combobox clicks
         combo.bind("<Button-1>", lambda e: combo._clicked(), add="+")
@@ -827,6 +832,7 @@ class WizardPages:
         families = ("SAM1", "SAM2")
         for fam, qbtn in zip(families, queue_all_buttons):
             qbtn.command = lambda fam=fam: queue_all(fam)
+            self._wizard_cards[f"queue_all_{fam.lower()}"] = qbtn.command
 
         # SAM3 is always enabled because setup is automatic
         sam3_widgets = self._wizard_render_sam3(parent, lambda: True, on_toggle=lambda: (sync_sam_setup_in_plan(), refresh_sam_page()))
@@ -925,6 +931,7 @@ class WizardPages:
                                 corner_radius=10, font=F_BODY, fg_color=FIELD_BG,
                                 border_color=CARD_BORDER, border_width=1, text_color=TEXT)
         hf_entry.pack(side="left", padx=8)
+        self._hf_token_entry = hf_entry
 
         if installed:
             sam3_btn = RoundedButton(row2, "Remove", icon="trash", variant="danger", width=130)
@@ -937,6 +944,7 @@ class WizardPages:
                 if on_toggle:
                     on_toggle()
 
+            self._wizard_cards["sam3"] = toggle_sam3
             sam3_btn.command = toggle_sam3
 
             def refresh(_present: bool):
@@ -957,6 +965,7 @@ class WizardPages:
                 if on_toggle:
                     on_toggle()
 
+            self._wizard_cards["sam3"] = toggle_sam3
             sam3_btn.command = toggle_sam3
 
             def refresh(present: bool):
@@ -1002,6 +1011,7 @@ class WizardPages:
     # -- Review & install --------------------------------------------------
 
     def _wizard_render_review(self, parent):
+        self._review_rows_discard_commands = []
         if len(self.plan) == 0:
             card = RoundedCard(parent)
             card.pack(fill="x")
@@ -1048,8 +1058,11 @@ class WizardPages:
             status_color = SUCCESS if kind == "install" else DANGER
             icon_canvas(line, status_icon, color=status_color, size=20, bg=CARD_BG).pack(side="left", padx=10)
             
+            discard_cmd = lambda: self._wizard_discard_many(keys)
+            self._review_rows_discard_commands.append(discard_cmd)
+            
             trash_btn = RoundedButton(line, "", icon="trash", variant="danger", width=40,
-                                       command=lambda: self._wizard_discard_many(keys))
+                                       command=discard_cmd)
             trash_btn.pack(side="right")
             
             row.finalize()

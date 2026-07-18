@@ -44,6 +44,7 @@ class LazyGimpApp(LandingPage, UninstallPage, WizardPages, InstallProgressPage):
 
         self.root_frame = tk.Frame(root, bg=BG)
         self.root_frame.pack(fill="both", expand=True)
+        self.root.bind("<Key>", self._on_global_key)
         self.show_landing()
         self.root.after(150, self._drain_log_queue)
 
@@ -134,3 +135,136 @@ class LazyGimpApp(LandingPage, UninstallPage, WizardPages, InstallProgressPage):
         if self.current_job is not None:
             self.current_job.log("Cancel requested by user — stopping...")
             self.current_job.cancel()
+
+    def _on_global_key(self, event):
+        focused = self.root.focus_get()
+        is_entry = False
+        if focused:
+            try:
+                widget_class = str(focused.winfo_class())
+                if "entry" in widget_class.lower() or "text" in widget_class.lower():
+                    is_entry = True
+            except Exception:
+                pass
+
+        key = event.keysym.lower()
+        state = event.state
+        
+        # Detect Alt key modifier
+        is_alt = (state & 0x0008) != 0 or (state & 0x0080) != 0 or "alt" in event.keysym.lower()
+        
+        # 1. Alt-based navigation (Always active)
+        if is_alt:
+            if key == "right":
+                if self.current_screen == "wizard" and hasattr(self, "wizard_steps") and self.wizard_index < len(self.wizard_steps) - 1:
+                    if self._wizard_can_advance():
+                        self._wizard_advance()
+                return
+            elif key == "left":
+                if self.current_screen == "wizard":
+                    self._wizard_back()
+                return
+            elif key == "s":
+                if self.current_screen == "wizard" and hasattr(self, "wizard_steps"):
+                    step = self.wizard_steps[self.wizard_index]
+                    if not step.prerequisite:
+                        self._wizard_advance()
+                return
+            elif key == "i":
+                if self.current_screen == "wizard" and hasattr(self, "wizard_steps"):
+                    step = self.wizard_steps[self.wizard_index]
+                    if step.key == "review":
+                        self._wizard_start_install()
+                return
+
+        # 2. Prevent single-character shortcuts if typing in text entry
+        if is_entry:
+            return
+
+        # 3. Single-character/Arrow keys when not typing
+        if self.current_screen == "landing":
+            if key in ("1", "q"):
+                self.show_wizard()
+                return
+            elif key in ("2", "u"):
+                if hasattr(self, "show_uninstall"):
+                    self.show_uninstall()
+                return
+        
+        elif self.current_screen == "wizard" and hasattr(self, "wizard_steps"):
+            step = self.wizard_steps[self.wizard_index]
+            
+            if key == "right":
+                if self._wizard_can_advance():
+                    self._wizard_advance()
+                return
+            elif key in ("left", "escape"):
+                self._wizard_back()
+                return
+            elif key == "s":
+                if not step.prerequisite:
+                    self._wizard_advance()
+                return
+                
+            if step.key == "gimp":
+                if key in ("1", "p"):
+                    if hasattr(self, "_wizard_pick_gimp_method"):
+                        self._wizard_pick_gimp_method("pm")
+                elif key in ("2", "a"):
+                    if hasattr(self, "_wizard_pick_gimp_method"):
+                        self._wizard_pick_gimp_method("appimage")
+                        
+            elif step.key == "components":
+                if key in ("1", "p"):
+                    handler = getattr(self, "_wizard_cards", {}).get("photogimp")
+                    if handler: handler()
+                elif key in ("2", "g"):
+                    handler = getattr(self, "_wizard_cards", {}).get("gmic")
+                    if handler: handler()
+                elif key in ("3", "b"):
+                    handler = getattr(self, "_wizard_cards", {}).get("batcher")
+                    if handler: handler()
+                    
+            elif step.key == "sam":
+                if key == "1":
+                    handler = getattr(self, "_wizard_cards", {}).get("sam_model:vit_b")
+                    if handler: handler()
+                elif key == "2":
+                    handler = getattr(self, "_wizard_cards", {}).get("sam_model:vit_l")
+                    if handler: handler()
+                elif key == "3":
+                    handler = getattr(self, "_wizard_cards", {}).get("sam_model:vit_h")
+                    if handler: handler()
+                elif key == "4":
+                    handler = getattr(self, "_wizard_cards", {}).get("sam_model:hiera_tiny")
+                    if handler: handler()
+                elif key in ("5", "h"):
+                    handler = getattr(self, "_wizard_cards", {}).get("sam3")
+                    if handler: handler()
+                elif key == "t":
+                    entry = getattr(self, "_hf_token_entry", None)
+                    if entry and entry.winfo_exists():
+                        entry.focus_set()
+                elif key == "p":
+                    combo = getattr(self, "_pytorch_combo", None)
+                    if combo and combo.winfo_exists():
+                        combo.focus_set()
+                        try:
+                            combo._clicked()
+                        except Exception:
+                            pass
+                elif key == "a":
+                    handler = getattr(self, "_wizard_cards", {}).get("queue_all_sam1")
+                    if handler: handler()
+                elif key == "b":
+                    handler = getattr(self, "_wizard_cards", {}).get("queue_all_sam2")
+                    if handler: handler()
+                    
+            elif step.key == "review":
+                if key in ("return", "space"):
+                    self._wizard_start_install()
+                elif key in ("1", "2", "3", "4", "5", "6", "7", "8", "9"):
+                    idx = int(key) - 1
+                    cmds = getattr(self, "_review_rows_discard_commands", [])
+                    if 0 <= idx < len(cmds):
+                        cmds[idx]()
