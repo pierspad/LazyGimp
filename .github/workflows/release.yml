@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------
-# Release — semantic-release on every push to main (and beta pre-releases
+# Release — semantic-release on every push to main (and dev pre-releases
 # from dev). Conventional commits drive the version bump, changelog, tag,
 # GitHub release with assets, and the automatic backmerge main → dev.
 # Inspired by MorpheApp/morphe-patches.
@@ -35,6 +35,16 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: lts/*
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install asset build prerequisites
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y python3-tk zip
+          pip install pyinstaller
 
       - name: Install release tooling
         run: npm install --no-audit --no-fund

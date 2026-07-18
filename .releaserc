@@ -53,14 +53,11 @@
       "@semantic-release/github",
       {
         "assets": [
-          { "path": "dist/package-manager-install.sh", "label": "Linux package manager — package-manager-install.sh" },
-          { "path": "dist/appimage-install.sh", "label": "Linux AppImage — appimage-install.sh" },
-          { "path": "dist/install.sh", "label": "Linux interactive (picks a method for you) — install.sh" },
-          { "path": "dist/plugins-install.sh", "label": "Linux plug-ins only (Batcher, SAM) — plugins-install.sh" },
-          { "path": "dist/uninstall.sh", "label": "Linux uninstall — uninstall.sh" },
+          { "path": "dist/lazygimp-linux-x86_64", "label": "Linux binary, zero dependencies (x86_64) — lazygimp-linux-x86_64" },
+          { "path": "dist/lazygimp.pyz", "label": "Single file, any OS with python3 + Tk — lazygimp.pyz" },
+          { "path": "dist/lazygimp-src.zip", "label": "Source folder, unzip & run (stable URL) — lazygimp-src.zip" },
+          { "path": "dist/lazygimp-*-src.zip", "label": "Source folder, versioned — lazygimp-${nextRelease.version}-src.zip" },
           { "path": "dist/windows-install.ps1", "label": "Windows — windows-install.ps1" },
-          { "path": "dist/lazygimp.tar.gz", "label": "Bundle (stable URL, used by the scripts) — lazygimp.tar.gz" },
-          { "path": "dist/lazygimp-*.tar.gz", "label": "Bundle, versioned — lazygimp-${nextRelease.version}.tar.gz" },
           { "path": "dist/checksums.txt", "label": "SHA-256 — checksums.txt" }
         ],
         "successComment": false

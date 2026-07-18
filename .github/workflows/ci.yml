@@ -1,7 +1,8 @@
 # ---------------------------------------------------------------------------
 # CI — every pull request (and push to main/dev) must pass:
-#   * ShellCheck + bash syntax check on every shell script
-#   * bats unit tests for the version-detection and PhotoGIMP-layer logic
+#   * ruff (lint) on the lazygimp package
+#   * unit/smoke tests on every supported Python (GUI import, CLI, registry)
+#   * a real build of the release assets (zipapp + PyInstaller binary)
 #   * actionlint on the workflows themselves
 #   * PSScriptAnalyzer on the Windows installer
 # ---------------------------------------------------------------------------
@@ -16,44 +17,64 @@ permissions:
   contents: read
 
 jobs:
-  shell:
-    name: ShellCheck & syntax
+  lint:
+    name: Lint (ruff)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install ShellCheck
-        run: sudo apt-get update -q && sudo apt-get install -y shellcheck
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-      - name: Bash syntax check
+      - name: ruff
         run: |
-          find . -name '*.sh' -not -path './node_modules/*' -print0 |
-            xargs -0 -n1 bash -n
-
-      - name: ShellCheck
-        run: |
-          find . -name '*.sh' -not -path './node_modules/*' -print0 |
-            xargs -0 shellcheck --external-sources --source-path=. --severity=style
-
-      - name: Entry scripts survive `sh script.sh` (POSIX-mode guard)
-        run: |
-          for s in install.sh package-manager-install.sh \
-                   appimage-install.sh plugins-install.sh uninstall.sh; do
-            sh "$s" --help >/dev/null
-            bash --posix "$s" --help >/dev/null
-          done
+          pip install ruff
+          ruff check lazygimp lazygimp.py tests
 
   tests:
-    name: Unit tests (bats)
+    name: Tests (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Smoke tests (headless — no Tk on purpose)
+        run: python -m unittest discover -s tests -v
+
+      - name: Byte-compile everything
+        run: python -m compileall -q lazygimp lazygimp.py
+
+  build:
+    name: Build release assets (dry run)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install bats
-        run: sudo apt-get update -q && sudo apt-get install -y bats
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-      - name: Run tests
-        run: bats tests
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y python3-tk zip
+          pip install pyinstaller
+
+      - name: Build assets
+        run: bash scripts/build_release_assets.sh 0.0.0-ci
+
+      - name: Assets must actually run
+        run: |
+          ./dist/lazygimp.pyz --help
+          ./dist/lazygimp-linux-x86_64 --help
+          ./dist/lazygimp-linux-x86_64 status
 
   workflows:
     name: Lint workflows (actionlint)

@@ -3,13 +3,19 @@
 # scripts/build_release_assets.sh <version> — assemble everything a GitHub
 # release ships, under dist/:
 #
-#   lazygimp.tar.gz             installer bundle, stable URL used by the
-#                               `curl | bash` bootstrap ("latest" alias)
-#   lazygimp-<version>.tar.gz   the same bundle, versioned
-#   windows-install.ps1        Windows installer script
+#   lazygimp.pyz                single-file zipapp — runs anywhere with
+#                               python3 + Tk:  python3 lazygimp.pyz
+#   lazygimp-linux-x86_64       PyInstaller binary — zero dependencies,
+#                               Linux x86_64 only
+#   lazygimp-src.zip            the source folder (lazygimp/ package +
+#                               lazygimp.py launcher) — unzip and run
+#   lazygimp-<version>-src.zip  the same zip, versioned
+#   windows-install.ps1         Windows installer script
 #   checksums.txt               SHA-256 of every asset
 #
-# Invoked by semantic-release (@semantic-release/exec, see .releaserc).
+# Invoked by semantic-release (@semantic-release/exec, see .releaserc) and
+# by the CI dry run. Requires: python3 (+python3-tk for a useful binary),
+# pyinstaller, zip.
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -20,57 +26,48 @@ DIST="${ROOT}/dist"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 
-BUNDLE="${STAGE}/lazygimp"
 rm -rf "$DIST"
-mkdir -p "$DIST" "$BUNDLE"
+mkdir -p "$DIST"
 
-# Copy the first existing candidate; fail loudly listing what was tried.
-copy_first() { # <dest-name> <candidate>...
-  local dest="$1" candidate
-  shift
-  for candidate in "$@"; do
-    if [[ -e "${ROOT}/${candidate}" ]]; then
-      cp -a "${ROOT}/${candidate}" "${BUNDLE}/${dest}"
-      return 0
-    fi
-  done
-  echo "error: none of the candidates for '${dest}' exist: $*" >&2
-  exit 1
-}
+# --- stage the source tree, stamped with the release version ---------------
+BUNDLE="${STAGE}/lazygimp"
+mkdir -p "$BUNDLE"
+cp -a "${ROOT}/lazygimp" "${ROOT}/lazygimp.py" "$BUNDLE/"
+cp -a "${ROOT}/docs/README.md" "${ROOT}/docs/LICENSE" "$BUNDLE/" 2>/dev/null ||
+  cp -a "${ROOT}/README.md" "${ROOT}/LICENSE" "$BUNDLE/"
+find "$BUNDLE" -name '__pycache__' -type d -exec rm -rf {} +
 
-# Everything the installer needs at runtime.
-cp -a \
-  "${ROOT}/install.sh" \
-  "${ROOT}/package-manager-install.sh" \
-  "${ROOT}/appimage-install.sh" \
-  "${ROOT}/plugins-install.sh" \
-  "${ROOT}/uninstall.sh" \
-  "${ROOT}/lib" \
-  "${ROOT}/shell_scripts" \
-  "${ROOT}/config" \
-  "$BUNDLE/"
+sed -i "s/^__version__ = .*/__version__ = \"${VERSION}\"/" \
+  "${BUNDLE}/lazygimp/__init__.py"
 
-# Docs live under docs/ in this repository, but tolerate a root layout too.
-copy_first LICENSE docs/LICENSE LICENSE
-copy_first README.md docs/README.md README.md
+# --- 1. zipapp: one .pyz file, runs on any python3 with Tk -----------------
+PYZ_STAGE="${STAGE}/pyz"
+mkdir -p "$PYZ_STAGE"
+cp -a "${BUNDLE}/lazygimp" "$PYZ_STAGE/"
+python3 -m zipapp "$PYZ_STAGE" \
+  --main "lazygimp.cli:main" \
+  --python "/usr/bin/env python3" \
+  --output "${DIST}/lazygimp.pyz" \
+  --compress
+chmod +x "${DIST}/lazygimp.pyz"
 
-# Stamp the release version into the bundled installer.
-sed -i "s/^LAZYGIMP_VERSION=.*/LAZYGIMP_VERSION=\"${VERSION}\"/" \
-  "${BUNDLE}/install.sh"
+# --- 2. PyInstaller: self-contained Linux binary ---------------------------
+pyinstaller --onefile --clean --noconfirm \
+  --name "lazygimp-linux-x86_64" \
+  --distpath "$DIST" \
+  --workpath "${STAGE}/pyi-build" \
+  --specpath "${STAGE}/pyi-spec" \
+  --paths "$BUNDLE" \
+  --hidden-import tkinter \
+  "${BUNDLE}/lazygimp.py"
 
-tar -czf "${DIST}/lazygimp.tar.gz" -C "$STAGE" lazygimp
-cp "${DIST}/lazygimp.tar.gz" "${DIST}/lazygimp-${VERSION}.tar.gz"
+# --- 3. source zip: the folder with everything needed to run ---------------
+(cd "$STAGE" && zip -qr "${DIST}/lazygimp-src.zip" lazygimp \
+  -x 'lazygimp/lazygimp/__pycache__/*')
+cp "${DIST}/lazygimp-src.zip" "${DIST}/lazygimp-${VERSION}-src.zip"
+
+# --- 4. Windows installer script -------------------------------------------
 cp "${ROOT}/windows/windows-install.ps1" "${DIST}/"
-
-# Every entry script is also a standalone asset: each self-bootstraps by
-# downloading the bundle above when its lib/ is not next to it.
-cp "${BUNDLE}/install.sh" "${DIST}/" # version-stamped copy
-cp -a \
-  "${ROOT}/package-manager-install.sh" \
-  "${ROOT}/appimage-install.sh" \
-  "${ROOT}/plugins-install.sh" \
-  "${ROOT}/uninstall.sh" \
-  "${DIST}/"
 
 (cd "$DIST" && sha256sum -- * >checksums.txt)
 
