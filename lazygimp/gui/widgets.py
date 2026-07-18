@@ -245,6 +245,32 @@ class ScrollableFrame(ctk.CTkScrollableFrame):
         super().__init__(parent, fg_color=bg, corner_radius=0)
         self.inner = self  # old call sites pack content into .inner
 
+    def _mouse_wheel_all(self, event):
+        import sys
+        if self.check_if_master_is_canvas(event.widget):
+            multiplier = 4
+            if sys.platform.startswith("win"):
+                if self._shift_pressed:
+                    if self._parent_canvas.xview() != (0.0, 1.0):
+                        self._parent_canvas.xview("scroll", -int(event.delta / 6) * multiplier, "units")
+                else:
+                    if self._parent_canvas.yview() != (0.0, 1.0):
+                        self._parent_canvas.yview("scroll", -int(event.delta / 6) * multiplier, "units")
+            elif sys.platform == "darwin":
+                if self._shift_pressed:
+                    if self._parent_canvas.xview() != (0.0, 1.0):
+                        self._parent_canvas.xview("scroll", -event.delta * multiplier, "units")
+                else:
+                    if self._parent_canvas.yview() != (0.0, 1.0):
+                        self._parent_canvas.yview("scroll", -event.delta * multiplier, "units")
+            else:
+                if self._shift_pressed:
+                    if self._parent_canvas.xview() != (0.0, 1.0):
+                        self._parent_canvas.xview_scroll(-1 * multiplier if event.num == 4 else 1 * multiplier, "units")
+                else:
+                    if self._parent_canvas.yview() != (0.0, 1.0):
+                        self._parent_canvas.yview_scroll(-1 * multiplier if event.num == 4 else 1 * multiplier, "units")
+
 
 def bind_click_recursive(widget, handler, skip=()):
     if widget in skip:

@@ -182,7 +182,7 @@ class WizardPages:
 
         if step.key in ("sam", "review"):
             scroller = ScrollableFrame(new_page)
-            scroller.pack(fill="both", expand=True, padx=26, pady=(6, 0))
+            scroller.pack(fill="both", expand=True, padx=(26, 6), pady=(6, 0))
             self._wizard_body_parent = scroller.inner
         else:
             body = tk.Frame(new_page, bg=BG)
@@ -746,53 +746,70 @@ class WizardPages:
             queue_all_buttons.append(queue_all_btn)
 
             for spec in [m for m in MODEL_REGISTRY if m.family == family]:
-                row = RoundedCard(fam_card.body, pad=14, radius=16)
+                installed = model_installed(spec)
+                install_key, remove_key = f"sam_model:{spec.key}:install", f"sam_model:{spec.key}:remove"
+                is_queued = self.plan.has(install_key) if not installed else self.plan.has(remove_key)
+                
+                if is_queued:
+                    card_bg = "#2e1b1d" if installed else "#152e20"
+                    card_hover_bg = "#3b2527" if installed else "#1e3d2c"
+                    active_border = DANGER if installed else SUCCESS
+                    active_width = 2
+                else:
+                    card_bg = CARD_BG
+                    card_hover_bg = "#2f323a"
+                    active_border = None
+                    active_width = 1
+
+                row = RoundedCard(fam_card.body, bg=card_bg, border=CARD_BORDER,
+                                  hover_bg=card_hover_bg, active_border=active_border,
+                                  active_width=active_width, hover_border=ACCENT, pad=14, radius=16)
                 row.pack(fill="x", pady=6)
                 rbody = row.body
-                top = tk.Frame(rbody, bg=CARD_BG)
-                top.pack(fill="x")
-                left = tk.Frame(top, bg=CARD_BG)
+                top = tk.Frame(rbody, bg=card_bg)
+                top.pack(fill="both", expand=True)
+                
+                left = tk.Frame(top, bg=card_bg)
                 left.pack(side="left", fill="x", expand=True)
-                name_row = tk.Frame(left, bg=CARD_BG)
+                name_row = tk.Frame(left, bg=card_bg)
                 name_row.pack(anchor="w")
-                tk.Label(name_row, text=spec.label, bg=CARD_BG, fg=TEXT, font=F_ITEM_TITLE).pack(
+                tk.Label(name_row, text=spec.label, bg=card_bg, fg=TEXT, font=F_ITEM_TITLE).pack(
                     side="left")
-                tk.Label(name_row, text=f"   {spec.size}", bg=CARD_BG, fg=TEXT_MUTED, font=F_SMALL).pack(
+                tk.Label(name_row, text=f"   {spec.size}", bg=card_bg, fg=TEXT_MUTED, font=F_SMALL).pack(
                     side="left")
                 if spec.key == rec_key:
-                    tk.Label(name_row, text="  ★ Recommended", bg=CARD_BG, fg=ACCENT,
+                    tk.Label(name_row, text="  ★ Recommended", bg=card_bg, fg=ACCENT,
                              font=F_SMALL_B).pack(side="left")
-                rating_widget(left, spec.quality, spec.speed, bg=CARD_BG).pack(anchor="w", pady=(4, 0))
+                rating_widget(left, spec.quality, spec.speed, bg=card_bg).pack(anchor="w", pady=(4, 0))
 
-                installed = model_installed(spec)
-                right = tk.Frame(top, bg=CARD_BG)
-                right.pack(side="right")
+                right = tk.Frame(top, bg=card_bg)
+                right.pack(side="right", padx=(16, 0), fill="y")
+                
                 if installed:
-                    btn = RoundedButton(right, "Remove", icon="trash", variant="danger", width=160)
+                    rik, ric = ("trash", DANGER) if is_queued else ("check", SUCCESS)
                 else:
-                    btn = RoundedButton(right, "Add to plan", icon="install", variant="success", width=160)
-                btn.pack(side="left")
-                model_widgets.append((btn, spec, installed))
+                    rik, ric = ("check", SUCCESS) if is_queued else ("circle", CARD_BORDER)
+                
+                right_canvas = icon_canvas(right, rik, color=ric, size=28, bg=card_bg)
+                right_canvas.pack(anchor="center", expand=True)
+                
+                def make_toggle_cmd(s=spec, inst=installed):
+                    ikey, rkey = f"sam_model:{s.key}:install", f"sam_model:{s.key}:remove"
+                    def cmd():
+                        if inst:
+                            self.plan.toggle(PlannedAction(rkey, f"Remove {s.label}", "remove",
+                                                            self._sam_model_remove_run(s)))
+                        else:
+                            self.plan.toggle(PlannedAction(ikey, f"Download {s.label}", "install",
+                                                            self._sam_model_install_run(s)))
+                        sync_sam_setup_in_plan()
+                        refresh_sam_page()
+                    return cmd
+                
+                row._command = make_toggle_cmd()
+                model_widgets.append((row, right_canvas, spec, installed))
                 row.finalize()
             fam_card.finalize()
-
-        def bind_model_row(btn, spec, installed):
-            install_key, remove_key = f"sam_model:{spec.key}:install", f"sam_model:{spec.key}:remove"
-            if installed:
-                btn.command = lambda: (
-                    self.plan.toggle(PlannedAction(remove_key, f"Remove {spec.label}", "remove",
-                                                    self._sam_model_remove_run(spec))),
-                    sync_sam_setup_in_plan(),
-                    refresh_sam_page())
-            else:
-                btn.command = lambda: (
-                    self.plan.toggle(PlannedAction(install_key, f"Download {spec.label}", "install",
-                                                    self._sam_model_install_run(spec))),
-                    sync_sam_setup_in_plan(),
-                    refresh_sam_page())
-
-        for btn, spec, installed in model_widgets:
-            bind_model_row(btn, spec, installed)
 
         def queue_all(family):
             missing = [m for m in MODEL_REGISTRY if m.family == family and not model_installed(m)]
@@ -815,14 +832,30 @@ class WizardPages:
         sam3_widgets = self._wizard_render_sam3(parent, lambda: True, on_toggle=lambda: (sync_sam_setup_in_plan(), refresh_sam_page()))
 
         def refresh_sam_page():
-            for btn, spec, installed in model_widgets:
-                if installed:
-                    q = self.plan.has(f"sam_model:{spec.key}:remove")
-                    btn.set_text("Remove" + (" ✓" if q else ""))
+            for card, rcanvas, spec, installed in model_widgets:
+                ikey, rkey = f"sam_model:{spec.key}:install", f"sam_model:{spec.key}:remove"
+                q = self.plan.has(rkey) if installed else self.plan.has(ikey)
+                
+                if q:
+                    card._bg = "#2e1b1d" if installed else "#152e20"
+                    card._hover_bg = "#3b2527" if installed else "#1e3d2c"
+                    card._active_border = DANGER if installed else SUCCESS
+                    card._active_width = 2
+                    
+                    rik, ric = ("trash", DANGER) if installed else ("check", SUCCESS)
                 else:
-                    q = self.plan.has(f"sam_model:{spec.key}:install")
-                    btn.set_text("Add to plan" + (" ✓" if q else ""))
-                    btn.set_enabled(True)
+                    card._bg = CARD_BG
+                    card._hover_bg = "#2f323a"
+                    card._active_border = None
+                    card._active_width = 1
+                    
+                    rik, ric = ("check", SUCCESS) if installed else ("circle", CARD_BORDER)
+                
+                rcanvas.delete("all")
+                from ..icons import blit_icon
+                blit_icon(rcanvas, 14, 14, rik, color=ric, size=28)
+                card._update_colors()
+                
             for qbtn in queue_all_buttons:
                 qbtn.set_enabled(True)
             sam3_widgets.refresh(True)
@@ -1032,7 +1065,7 @@ class WizardPages:
                     "remove", "sam", [a.key for a in sam_removes])
 
         RoundedButton(parent, f"Proceed to installation ({len(self.plan)})", icon="bolt", variant="primary",
-                      width=320, height=44, command=self._wizard_start_install).pack(anchor="w", pady=(14, 0))
+                      width=340, height=44, command=self._wizard_start_install).pack(anchor="center", pady=(24, 12))
 
     def _wizard_discard_many(self, keys: list[str]):
         for key in keys:
