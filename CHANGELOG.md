@@ -1,3 +1,13 @@
+## [1.2.0-dev.8](https://github.com/pierspad/LazyGimp/compare/v1.2.0-dev.7...v1.2.0-dev.8) (2026-07-18)
+
+### ✨ Features
+
+* **gui:** implement global keyboard shortcuts for full hands-free installer navigation ([6cbde67](https://github.com/pierspad/LazyGimp/commit/6cbde675dadcaeb91ee1f92b4ce4a0be40f6257d))
+
+### 🐛 Bug Fixes
+
+* **gui:** fix linter errors, import DISABLED theme colors, and remove unused variables ([bf78e20](https://github.com/pierspad/LazyGimp/commit/bf78e2047922977491acabf17ac50cd57ef0eeaa))
+
 ## [1.2.0-dev.7](https://github.com/pierspad/LazyGimp/compare/v1.2.0-dev.6...v1.2.0-dev.7) (2026-07-18)
 
 ### ✨ Features
