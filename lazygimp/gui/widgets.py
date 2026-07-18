@@ -36,7 +36,15 @@ class RoundedButton(ctk.CTkButton):
     def __init__(self, parent, text, command=None, variant="secondary", icon=None,
                  width=None, height=34, radius=13, font=F_BODY_B, bg=None, on_blocked=None):
         fill, hover, fg = self._PALETTE[variant]
-        self._icon_glyph = _BUTTON_GLYPHS.get(icon, "") if icon else ""
+        self.icon_name = icon
+        self._icon_image = None
+        if icon:
+            from .icons import render_ctk_image
+            self._icon_image = render_ctk_image(icon, fg, size=18)
+        if self._icon_image:
+            self._icon_glyph = ""
+        else:
+            self._icon_glyph = _BUTTON_GLYPHS.get(icon, "") if icon else ""
         self._base_text = text
         self.on_blocked = on_blocked
         self.variant = variant
@@ -48,6 +56,7 @@ class RoundedButton(ctk.CTkButton):
             width=width or 140, height=height, corner_radius=radius,
             fg_color=fill, hover_color=hover, text_color=fg,
             text_color_disabled=DISABLED_TEXT, font=font, border_width=0,
+            image=self._icon_image
         )
         # Clicking a disabled button still means something on some pages
         # (e.g. "enter a HF token first") — CTk swallows the click, so we
@@ -84,6 +93,11 @@ class RoundedButton(ctk.CTkButton):
         self.variant = variant
         fill, hover, fg = self._PALETTE[variant]
         self.configure(fg_color=fill, hover_color=hover, text_color=fg)
+        if self.icon_name:
+            from .icons import render_ctk_image
+            self._icon_image = render_ctk_image(self.icon_name, fg, size=18)
+            if self._icon_image:
+                self.configure(image=self._icon_image)
 
     def start_loading(self, base_text="Working"):
         if self._loading:
@@ -117,19 +131,80 @@ class RoundedButton(ctk.CTkButton):
 
 class RoundedCard(ctk.CTkFrame):
     """A rounded card with a `.body` plain-tk frame for content — pages
-    pack tk.Label/tk.Frame children into .body exactly as before."""
+    pack tk.Label/tk.Frame children into .body exactly as before.
+    Supports optional interactivity (hovering, clicking, active border color/width).
+    """
 
-    def __init__(self, parent, bg=CARD_BG, border=CARD_BORDER, radius=18, pad=18, width=None, height=None):
-        super().__init__(parent, fg_color=bg, border_color=border, border_width=1,
+    def __init__(self, parent, bg=CARD_BG, border=CARD_BORDER, radius=18, pad=18, width=None, height=None,
+                 command=None, hover_bg="#2f323a", hover_border=None, active_border=None, active_width=1):
+        super().__init__(parent, fg_color=bg, border_color=border, border_width=active_width if active_border else 1,
                          corner_radius=radius, width=width or 200, height=height or 200)
         if width or height:
             self.pack_propagate(False)
             self.grid_propagate(False)
+        self._bg = bg
+        self._border = border
+        self._command = command
+        self._hover_bg = hover_bg
+        self._hover_border = hover_border
+        self._active_border = active_border
+        self._active_width = active_width
+        self._hovered = False
+
         self.body = tk.Frame(self, bg=bg)
         self.body.pack(fill="both", expand=True, padx=pad, pady=pad)
 
-    def finalize(self):  # kept for call-site compatibility
-        pass
+    def finalize(self):
+        if self._command is not None:
+            self._bind_events(self)
+            self._update_colors()
+
+    def _bind_events(self, widget):
+        if isinstance(widget, (ctk.CTkButton, tk.Button)):
+            return
+        try:
+            widget.configure(cursor="hand2")
+        except Exception:
+            pass
+        widget.bind("<Button-1>", lambda e: self._on_click(), add="+")
+        widget.bind("<Enter>", lambda e: self._on_enter(), add="+")
+        widget.bind("<Leave>", lambda e: self._on_leave(), add="+")
+        for child in widget.winfo_children():
+            self._bind_events(child)
+
+    def _on_click(self):
+        if self._command:
+            self._command()
+
+    def _on_enter(self):
+        self._hovered = True
+        self._update_colors()
+
+    def _on_leave(self):
+        self._hovered = False
+        self._update_colors()
+
+    def _update_colors(self):
+        bg_color = self._hover_bg if self._hovered else self._bg
+        if self._active_border is not None:
+            border_color = self._active_border
+            border_width = self._active_width
+        else:
+            border_color = self._hover_border if (self._hovered and self._hover_border) else self._border
+            border_width = 1
+        self.configure(fg_color=bg_color, border_color=border_color, border_width=border_width)
+        self._set_bg_recursive(self.body, bg_color)
+
+    def _set_bg_recursive(self, widget, bg_color):
+        if isinstance(widget, (ctk.CTkButton, tk.Button)):
+            return
+        if not isinstance(widget, ctk.CTkBaseClass):
+            try:
+                widget.configure(bg=bg_color)
+            except Exception:
+                pass
+        for child in widget.winfo_children():
+            self._set_bg_recursive(child, bg_color)
 
 
 class ProgressBar(ctk.CTkProgressBar):

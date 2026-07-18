@@ -12,10 +12,10 @@ import threading
 
 def themed_dialog(root, title, message, kind="info"):
     win = tk.Toplevel(root)
+    win.overrideredirect(True)
+    win.attributes("-topmost", True)
     win.configure(bg=BG)
-    win.title(title)
     win.transient(root)
-    win.resizable(False, False)
     card = RoundedCard(win, radius=18, pad=20, width=380)
     card.pack(padx=2, pady=2)
     tk.Label(card.body, text=title, bg=CARD_BG, fg=TEXT, font=F_DIALOG_TITLE).pack(anchor="w")
@@ -36,11 +36,16 @@ def themed_dialog(root, title, message, kind="info"):
                       command=lambda: close(True)).pack(side="left")
     else:
         RoundedButton(btns, "OK", variant="primary", width=90, command=lambda: close(True)).pack(side="left")
+        
+    win.bind("<Escape>", lambda _e: close(False if kind == "confirm" else True))
+    win.bind("<Return>", lambda _e: close(True))
+    
     card.finalize()
     win.update_idletasks()
     rx, ry, rw, rh = root.winfo_rootx(), root.winfo_rooty(), root.winfo_width(), root.winfo_height()
     ww, wh = win.winfo_reqwidth(), win.winfo_reqheight()
     win.geometry(f"+{rx + max(0, (rw - ww) // 2)}+{ry + max(0, (rh - wh) // 2)}")
+    win.focus_force()
     win.grab_set()
     win.wait_window()
     return result["value"]
@@ -95,10 +100,10 @@ class TkPasswordPrompt:
 
     def _show(self, prompt_text: str) -> str:
         win = tk.Toplevel(self.root)
+        win.overrideredirect(True)
+        win.attributes("-topmost", True)
         win.configure(bg=BG)
-        win.title("Password required")
         win.transient(self.root)
-        win.resizable(False, False)
         card = RoundedCard(win, radius=18, pad=20, width=420)
         card.pack(padx=2, pady=2)
         tk.Label(card.body, text="Administrator password", bg=CARD_BG, fg=TEXT,
@@ -133,6 +138,7 @@ class TkPasswordPrompt:
         ww, wh = win.winfo_reqwidth(), win.winfo_reqheight()
         win.geometry(f"+{rx + max(0, (rw - ww) // 2)}+{ry + max(0, (rh - wh) // 2)}")
         entry.focus_set()
+        win.focus_force()
         win.grab_set()
         win.wait_window()
         return result["pw"]

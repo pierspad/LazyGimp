@@ -7,7 +7,7 @@ dependency beyond Tkinter itself."""
 from __future__ import annotations
 
 from ..compat import Image, ImageDraw, ImageTk, _PIL_OK, tk
-from .theme import TEXT
+from .theme import SUCCESS, TEXT, WARNING
 import math
 
 
@@ -69,6 +69,74 @@ def _paint_icon(p: _Painter, cx, cy, kind, color, s, frame=0):
                 corners += [cx + rr * ca - tt * sa, cy + rr * sa + tt * ca]
             p.polygon(corners, color)
         p.oval(cx - inner_r, cy - inner_r, cx + inner_r, cy + inner_r, outline=color, width=s * 0.3)
+    elif kind == "circle":
+        p.oval(cx - s * 0.75, cy - s * 0.75, cx + s * 0.75, cy + s * 0.75, outline=color, width=w)
+    elif kind == "appimage":
+        p.polygon([
+            cx - s * 0.7, cy - s * 0.4,
+            cx + s * 0.4, cy - s * 0.7,
+            cx + s * 0.7, cy + s * 0.4,
+            cx - s * 0.4, cy + s * 0.7
+        ], outline=color, width=w)
+        p.polygon([
+            cx - s * 0.2, cy + s * 0.3,
+            cx, cy - s * 0.3,
+            cx + s * 0.2, cy + s * 0.3
+        ], outline=color, width=w)
+        p.line([cx - s * 0.1, cy + s * 0.1, cx + s * 0.1, cy + s * 0.1], color, width=w)
+    elif kind == "photogimp":
+        p.polygon([cx - s * 0.5, cy - s * 0.3, cx - s * 0.7, cy - s * 0.7, cx - s * 0.2, cy - s * 0.4], outline=color, width=w)
+        p.polygon([cx + s * 0.2, cy - s * 0.4, cx + s * 0.7, cy - s * 0.7, cx + s * 0.5, cy - s * 0.3], outline=color, width=w)
+        p.oval(cx - s * 0.6, cy - s * 0.4, cx + s * 0.6, cy + s * 0.5, outline=color, width=w)
+        p.oval(cx - s * 0.85, cy - s * 0.1, cx - s * 0.5, cy + s * 0.25, color=color)
+        p.oval(cx - s * 0.35, cy - s * 0.3, cx + s * 0.05, cy + s * 0.1, outline=color, width=w)
+        p.oval(cx - s * 0.05, cy - s * 0.3, cx + s * 0.35, cy + s * 0.1, outline=color, width=w)
+        p.oval(cx - s * 0.22, cy - s * 0.18, cx - s * 0.08, cy - s * 0.04, color=color)
+        p.oval(cx + s * 0.08, cy - s * 0.18, cx + s * 0.22, cy - s * 0.04, color=color)
+        p.arc(cx - s * 0.3, cy + s * 0.05, cx + s * 0.4, cy + s * 0.4, 200, 120, color, width=w)
+        p.line([cx + s * 0.05, cy + s * 0.25, cx + s * 0.65, cy + s * 0.55], color, width=max(2.5, s * 0.18))
+        p.polygon([cx + s * 0.65, cy + s * 0.55, cx + s * 0.85, cy + s * 0.75, cx + s * 0.75, cy + s * 0.5], color=color)
+    elif kind == "gmic":
+        p.oval(cx - s * 0.8, cy + s * 0.4, cx + s * 0.8, cy + s * 0.7, outline=color, width=w)
+        p.polygon([cx - s * 0.45, cy + s * 0.45, cx, cy - s * 0.75, cx + s * 0.45, cy + s * 0.45], outline=color, width=w)
+        p.line([cx - s * 0.6, cy - s * 0.3, cx - s * 0.4, cy - s * 0.3], color, width=w)
+        p.line([cx - s * 0.5, cy - s * 0.4, cx - s * 0.5, cy - s * 0.2], color, width=w)
+        p.line([cx + s * 0.4, cy - s * 0.1, cx + s * 0.6, cy - s * 0.1], color, width=w)
+        p.line([cx + s * 0.5, cy - s * 0.2, cx + s * 0.5, cy], color, width=w)
+    elif kind == "batcher":
+        p.rect(cx - s * 0.4, cy - s * 0.7, cx + s * 0.6, cy + s * 0.3, outline=color, width=w, radius=s * 0.15)
+        p.rect(cx - s * 0.5, cy - s * 0.5, cx + s * 0.5, cy + s * 0.5, outline=color, width=w, radius=s * 0.15)
+        p.rect(cx - s * 0.6, cy - s * 0.3, cx + s * 0.4, cy + s * 0.7, outline=color, width=w, radius=s * 0.15)
+        p.oval(cx - s * 0.3, cy + s * 0.05, cx + s * 0.1, cy + s * 0.45, outline=color, width=w)
+        p.line([cx - s * 0.1, cy + s * 0.15, cx - s * 0.1, cy + s * 0.35], color, width=w)
+        p.line([cx - s * 0.2, cy + s * 0.25, cx, cy + s * 0.25], color, width=w)
+    elif kind == "arch":
+        p.polygon([cx, cy - s * 0.95, cx - s * 0.8, cy + s * 0.75, cx, cy + s * 0.35, cx + s * 0.8, cy + s * 0.75], outline=color, width=w)
+        p.polygon([cx, cy - s * 0.4, cx - s * 0.45, cy + s * 0.45, cx, cy + s * 0.22, cx + s * 0.45, cy + s * 0.45], color=color)
+    elif kind == "debian":
+        p.oval(cx - s * 0.75, cy - s * 0.75, cx + s * 0.75, cy + s * 0.75, outline=color, width=w)
+        p.arc(cx - s * 0.45, cy - s * 0.45, cx + s * 0.45, cy + s * 0.45, 90, 270, color, width=w)
+        p.arc(cx - s * 0.2, cy - s * 0.2, cx + s * 0.2, cy + s * 0.2, 0, 180, color, width=w)
+    elif kind == "ubuntu":
+        p.oval(cx - s * 0.75, cy - s * 0.75, cx + s * 0.75, cy + s * 0.75, outline=color, width=w)
+        for angle in (0, 120, 240):
+            rad = math.radians(angle)
+            px = cx + math.cos(rad) * s * 0.65
+            py = cy + math.sin(rad) * s * 0.65
+            p.oval(px - s * 0.18, py - s * 0.18, px + s * 0.18, py + s * 0.18, color=color)
+    elif kind == "fedora":
+        p.oval(cx - s * 0.8, cy - s * 0.8, cx + s * 0.8, cy + s * 0.8, outline=color, width=w)
+        p.arc(cx - s * 0.4, cy - s * 0.4, cx + s * 0.1, cy + s * 0.4, 45, 270, color, width=w)
+        p.line([cx - s * 0.35, cy, cx + s * 0.25, cy], color, width=w)
+    elif kind == "opensuse":
+        p.oval(cx - s * 0.8, cy - s * 0.6, cx + s * 0.8, cy + s * 0.6, outline=color, width=w)
+        p.oval(cx - s * 0.2, cy - s * 0.2, cx + s * 0.2, cy + s * 0.2, color=color)
+    elif kind == "linux":
+        p.oval(cx - s * 0.5, cy - s * 0.8, cx + s * 0.5, cy + s * 0.8, outline=color, width=w)
+        p.oval(cx - s * 0.25, cy - s * 0.4, cx + s * 0.25, cy, color=color)
+        p.oval(cx - s * 0.15, cy - s * 0.65, cx - s * 0.05, cy - s * 0.55, color=color)
+        p.oval(cx + s * 0.05, cy - s * 0.65, cx + s * 0.15, cy - s * 0.55, color=color)
+        p.polygon([cx - s * 0.1, cy - s * 0.5, cx + s * 0.1, cy - s * 0.5, cx, cy - s * 0.4], color=WARNING)
     elif kind == "bolt":
         p.polygon([
             cx + s * 0.15, cy - s, cx - s * 0.65, cy + s * 0.1, cx - s * 0.05, cy + s * 0.1,
@@ -148,6 +216,17 @@ def render_icon_photo(kind, color, size=20, frame=0):
     photo = ImageTk.PhotoImage(img.resize((size, size), Image.LANCZOS))
     _ICON_PHOTO_CACHE[key] = photo
     return photo
+
+def render_ctk_image(kind, color, size=18, frame=0):
+    if not _PIL_OK:
+        return None
+    from ..compat import ctk
+    big = size * 4
+    img = Image.new("RGBA", (big, big), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    _paint_icon(_Painter(draw, pil=True), big / 2, big / 2, kind, color, big * 0.36, frame)
+    resized_img = img.resize((size, size), Image.LANCZOS)
+    return ctk.CTkImage(light_image=resized_img, dark_image=resized_img, size=(size, size))
 
 def draw_icon(canvas, cx, cy, kind, color=TEXT, s=7, frame=0):
     _paint_icon(_Painter(canvas, pil=False), cx, cy, kind, color, s, frame)

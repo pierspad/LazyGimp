@@ -7,7 +7,7 @@ from __future__ import annotations
 from ...compat import ctk, tk
 from ...constants import APPIMAGE_DIR, GMIC_DOWNLOAD_PAGE, SAM3_HF_PAGE, SAM3_HF_REPO_ID, TORCH_INDEX_URLS, VENV_DIR
 from ...distro import detect_distro
-from ...gimp_detect import find_gimp_command
+from ...gimp_detect import find_gimp_binary, find_gimp_command
 from ...gimp_install import appimage_present, gimp_native_installed, gmic_available_on_this_release, gmic_installed, install_gimp_appimage, install_gimp_package_manager, install_gmic_only, remove_gmic_only
 from ...hardware import recommended_model_key, recommended_torch_index
 from ...job import Job
@@ -20,7 +20,7 @@ from ...sam_backend import backend_ready, install_sam3_transformers, install_sam
 from ..dialogs import show_snackbar, themed_confirm, themed_info
 from ..helpers import autowrap_label, rating_widget
 from ..icons import icon_canvas
-from ..theme import ACCENT, BG, CARD_BG, CARD_BORDER, DANGER, F_BODY, F_BODY_B, F_H3, F_ITEM_TITLE, F_SECTION, F_SMALL, F_SMALL_B, FIELD_BG, SECONDARY_HOVER, SUCCESS, TEXT, TEXT_MUTED
+from ..theme import ACCENT, BG, CARD_BG, CARD_BORDER, DANGER, F_BODY, F_BODY_B, F_H3, F_ITEM_TITLE, F_SECTION, F_SMALL, F_SMALL_B, FIELD_BG, SECONDARY_HOVER, SUCCESS, TEXT, TEXT_MUTED, F_CARD_TITLE, WARNING
 from ..widgets import RoundedButton, RoundedCard, ScrollableFrame, bind_click_recursive, callout
 from typing import Optional
 import os
@@ -56,13 +56,16 @@ class WizardPages:
         self.hf_token_var = tk.StringVar()
         self.wizard_steps = self._build_wizard_steps()
         self.wizard_index = 0
+        self._prev_wizard_index = 0
+        self._current_wizard_frame = None
+        self._wizard_animating = False
         self._render_wizard_step()
 
     def _build_wizard_steps(self) -> list[WizardStep]:
         steps = []
-        if not (gimp_native_installed() or appimage_present()):
+        if not (gimp_native_installed() or appimage_present() or find_gimp_binary()):
             steps.append(WizardStep("gimp", "GIMP (prerequisite)", prerequisite=True))
-        steps.append(WizardStep("components", "PhotoGIMP · G'MIC · Batcher"))
+        steps.append(WizardStep("components", "Select which plugin you want to add"))
         steps.append(WizardStep("sam", "SAM (segmentation models)"))
         steps.append(WizardStep("review", "Review & install"))
         return steps
@@ -74,22 +77,29 @@ class WizardPages:
         return True
 
     def _wizard_advance(self):
+        if getattr(self, "_wizard_animating", False):
+            return
         if not self._wizard_can_advance():
             return
         self.wizard_index += 1
         self._render_wizard_step()
 
     def _wizard_back(self):
+        if getattr(self, "_wizard_animating", False):
+            return
         if self.wizard_index == 0:
             if len(self.plan) and not themed_confirm(
                     self.root, "Leave setup", "Discard your selections and go back to the start screen?"):
                 return
+            self._current_wizard_frame = None
             self.show_landing()
             return
         self.wizard_index -= 1
         self._render_wizard_step()
 
     def _wizard_jump_to_step(self, step_key: str):
+        if getattr(self, "_wizard_animating", False):
+            return
         for i, step in enumerate(self.wizard_steps):
             if step.key == step_key:
                 self.wizard_index = i
@@ -118,20 +128,17 @@ class WizardPages:
 
     def _render_wizard_step(self):
         self.current_screen = "wizard"
-        for w in self.root_frame.winfo_children():
-            w.destroy()
         step = self.wizard_steps[self.wizard_index]
 
-        outer = tk.Frame(self.root_frame, bg=BG)
-        outer.pack(fill="both", expand=True)
+        new_frame = tk.Frame(self.root_frame, bg=BG)
 
-        top = tk.Frame(outer, bg=BG)
+        top = tk.Frame(new_frame, bg=BG)
         top.pack(fill="x", padx=26, pady=(16, 0))
         tk.Label(top, text=step.title, bg=BG, fg=TEXT, font=F_H3).pack(side="left")
         tk.Label(top, text=f"Step {self.wizard_index + 1} of {len(self.wizard_steps)}", bg=BG,
                  fg=TEXT_MUTED, font=F_BODY).pack(side="right")
 
-        nav = tk.Frame(outer, bg=BG)
+        nav = tk.Frame(new_frame, bg=BG)
         nav.pack(fill="x", padx=26, pady=(10, 16), side="bottom")
         RoundedButton(nav, "← Back", variant="secondary", width=110, command=self._wizard_back).pack(
             side="left")
@@ -143,20 +150,77 @@ class WizardPages:
             self._wizard_next_btn.set_enabled(self._wizard_can_advance())
             if not step.prerequisite:
                 RoundedButton(nav, "Skip →", variant="secondary", width=110,
-                              command=self._wizard_advance).pack(side="right", padx=(0, 8))
+                               command=self._wizard_advance).pack(side="right", padx=(0, 8))
 
         # Only pages that can outgrow the window get a scroll area — the
         # others use a plain frame, so there's no scrollbar (and none of
         # CTkScrollableFrame's canvas plumbing) where nothing scrolls.
         if step.key in ("sam", "review"):
-            scroller = ScrollableFrame(outer)
+            scroller = ScrollableFrame(new_frame)
             scroller.pack(fill="both", expand=True, padx=26, pady=(6, 0))
             self._wizard_body_parent = scroller.inner
         else:
-            body = tk.Frame(outer, bg=BG)
+            body = tk.Frame(new_frame, bg=BG)
             body.pack(fill="both", expand=True, padx=26, pady=(6, 0))
             self._wizard_body_parent = body
         self._refresh_wizard_body()
+
+        old_frame = getattr(self, "_current_wizard_frame", None)
+        if old_frame and old_frame.winfo_exists():
+            direction = "forward" if self.wizard_index > self._prev_wizard_index else "backward"
+            self._animate_slide(old_frame, new_frame, direction)
+        else:
+            for w in self.root_frame.winfo_children():
+                if w is not new_frame:
+                    w.destroy()
+            new_frame.place(relx=0, rely=0, relwidth=1, relheight=1)
+            self._current_wizard_frame = new_frame
+
+        self._prev_wizard_index = self.wizard_index
+
+    def _animate_slide(self, old_frame, new_frame, direction):
+        self._wizard_animating = True
+        steps = 15
+        interval = 12
+        
+        if direction == "forward":
+            start_y_new = 1.0
+        else:
+            start_y_new = -1.0
+            
+        new_frame.place(relx=0, rely=start_y_new, relwidth=1, relheight=1)
+        new_frame.lift()
+        
+        def ease_out(t):
+            return 1.0 - (1.0 - t) * (1.0 - t)
+
+        def step(i):
+            if not self.root.winfo_exists() or not old_frame.winfo_exists() or not new_frame.winfo_exists():
+                self._wizard_animating = False
+                return
+                
+            t = i / steps
+            progress = ease_out(t)
+            
+            if direction == "forward":
+                curr_y_old = -progress
+                curr_y_new = 1.0 - progress
+            else:
+                curr_y_old = progress
+                curr_y_new = -1.0 + progress
+                
+            old_frame.place(relx=0, rely=curr_y_old, relwidth=1, relheight=1)
+            new_frame.place(relx=0, rely=curr_y_new, relwidth=1, relheight=1)
+            
+            if i < steps:
+                self.root.after(interval, lambda: step(i + 1))
+            else:
+                old_frame.destroy()
+                new_frame.place(relx=0, rely=0, relwidth=1, relheight=1)
+                self._current_wizard_frame = new_frame
+                self._wizard_animating = False
+                
+        step(1)
 
     def _refresh_wizard_body(self):
         """Re-render only the current page's content, in place — used for
@@ -170,52 +234,192 @@ class WizardPages:
         if self._wizard_next_btn is not None and self._wizard_next_btn.winfo_exists():
             self._wizard_next_btn.set_enabled(self._wizard_can_advance())
 
-    def _status_row(self, body, ok: bool, text: str):
-        row = tk.Frame(body, bg=CARD_BG)
+    def _status_row(self, body, ok: bool, text: str, icon_kind=None, icon_color=None, bg=CARD_BG):
+        row = tk.Frame(body, bg=bg)
         row.pack(fill="x", pady=(0, 10))
-        icon_canvas(row, "check" if ok else "x", color=SUCCESS if ok else TEXT_MUTED, size=18,
-                    bg=CARD_BG).pack(side="left", padx=(0, 8))
-        autowrap_label(row, text, fg=TEXT, bg=CARD_BG, font=F_BODY).pack(side="left", fill="x",
-                                                                                 expand=True)
+        ik = icon_kind or ("check" if ok else "x")
+        ic = icon_color or (SUCCESS if ok else TEXT_MUTED)
+        canvas = icon_canvas(row, ik, color=ic, size=18, bg=bg)
+        canvas.pack(side="left", padx=(0, 8))
+        lbl = autowrap_label(row, text, fg=TEXT, bg=bg, font=F_BODY)
+        lbl.pack(side="left", fill="x", expand=True)
+        return canvas, lbl
 
-    def _wizard_toggle_card(self, parent, *, key: str, installed: bool, status_text: str, install_label: str,
-                             install_run, uninstall_run, uninstall_label: str = "Uninstall",
+    def _wizard_toggle_card(self, parent, *, key: str, title: str, icon_kind: str, installed: bool, description: str,
+                             install_label: str, install_run, uninstall_run, uninstall_label: str = "Uninstall",
                              install_enabled: bool = True, disabled_reason: Optional[str] = None,
                              advance: bool = True, extra=None):
-        """One reusable card covering every single-decision component page
-        (PhotoGIMP, G'MIC, Batcher):
-        not installed -> one green toggle that queues/unqueues Install;
-        installed -> one red toggle that queues/unqueues Uninstall.
-        Exactly one button, so there's never a second, greyed-out one
-        sitting next to it — just a ✓ once it's queued."""
-        card = RoundedCard(parent)
-        card.pack(fill="x", pady=(0, 10))
-        body = card.body
-        self._status_row(body, installed, status_text)
-        if extra:
-            extra(body)
-        btn_row = tk.Frame(body, bg=CARD_BG)
-        btn_row.pack(fill="x", pady=(6, 0))
         if installed:
-            remove_key = f"{key}:remove"
-            queued = self.plan.has(remove_key)
-            RoundedButton(
-                btn_row, uninstall_label + (" ✓" if queued else ""), icon="trash", variant="danger", width=220,
-                command=lambda: self._wizard_toggle_and_advance(
-                    remove_key, f"Remove {install_label}", "remove", uninstall_run, advance=advance),
-            ).pack(side="left")
+            action_key = f"{key}:remove"
+            action_label = f"Remove {install_label}"
+            action_kind = "remove"
+            action_run = uninstall_run
         else:
-            install_key = f"{key}:install"
-            queued = self.plan.has(install_key)
-            btn = RoundedButton(
-                btn_row, install_label + (" ✓" if queued else ""), icon="install", variant="success", width=220,
-                command=lambda: self._wizard_toggle_and_advance(
-                    install_key, install_label, "install", install_run, advance=advance),
-            )
-            btn.pack(side="left")
-            btn.set_enabled(install_enabled or queued)
-            if not (install_enabled or queued) and disabled_reason:
-                callout(body, disabled_reason, "warn")
+            action_key = f"{key}:install"
+            action_label = install_label
+            action_kind = "install"
+            action_run = install_run
+
+        is_card_enabled = installed or install_enabled or self.plan.has(action_key)
+        queued = self.plan.has(action_key) if is_card_enabled else False
+
+        # Set initial colors and borders
+        if is_card_enabled:
+            if queued:
+                card_bg = "#2e1b1d" if installed else "#152e20"
+                card_hover_bg = "#3b2527" if installed else "#1e3d2c"
+                active_border = DANGER if installed else SUCCESS
+                active_width = 2
+            else:
+                card_bg = CARD_BG
+                card_hover_bg = "#2f323a"
+                active_border = None
+                active_width = 1
+        else:
+            card_bg = DISABLED_BG
+            card_hover_bg = DISABLED_BG
+            active_border = None
+            active_width = 1
+
+        # Calculate initial status text and right icon
+        if installed:
+            if queued:
+                status_text = "queued for removal"
+                status_color = DANGER
+                right_icon_kind = "trash"
+                right_icon_color = DANGER
+            else:
+                status_text = "installed"
+                status_color = SUCCESS
+                right_icon_kind = "check"
+                right_icon_color = SUCCESS
+        else:
+            if queued:
+                status_text = "queued for install"
+                status_color = SUCCESS
+                right_icon_kind = "check"
+                right_icon_color = SUCCESS
+            else:
+                status_text = "not installed"
+                status_color = TEXT_MUTED
+                right_icon_kind = "circle"
+                right_icon_color = CARD_BORDER
+
+        def on_card_click():
+            if not is_card_enabled:
+                show_snackbar(self, disabled_reason or "Not available", "warn")
+                return
+            
+            # Toggle Action in plan
+            now_queued = self.plan.toggle(PlannedAction(action_key, action_label, action_kind, action_run))
+            
+            if advance and now_queued:
+                self._wizard_advance()
+            else:
+                # Update Next button status
+                if self._wizard_next_btn is not None and self._wizard_next_btn.winfo_exists():
+                    self._wizard_next_btn.set_enabled(self._wizard_can_advance())
+                # Update card UI state in-place without page reload!
+                update_card_ui()
+
+        def update_card_ui():
+            q = self.plan.has(action_key)
+            if q:
+                card._bg = "#2e1b1d" if installed else "#152e20"
+                card._hover_bg = "#3b2527" if installed else "#1e3d2c"
+                card._active_border = DANGER if installed else SUCCESS
+                card._active_width = 2
+                
+                # Status and Right Icon when queued
+                if installed:
+                    ds = "queued for removal"
+                    sc = DANGER
+                    rik = "trash"
+                    ric = DANGER
+                else:
+                    ds = "queued for install"
+                    sc = SUCCESS
+                    rik = "check"
+                    ric = SUCCESS
+            else:
+                card._bg = CARD_BG
+                card._hover_bg = "#2f323a"
+                card._active_border = None
+                card._active_width = 1
+                
+                # Status and Right Icon when not queued
+                if installed:
+                    ds = "installed"
+                    sc = SUCCESS
+                    rik = "check"
+                    ric = SUCCESS
+                else:
+                    ds = "not installed"
+                    sc = TEXT_MUTED
+                    rik = "circle"
+                    ric = CARD_BORDER
+            
+            # Update labels
+            status_label.configure(text=ds, fg=sc)
+            
+            # Update right canvas icon
+            right_canvas.delete("all")
+            from ..icons import blit_icon
+            blit_icon(right_canvas, 14, 14, rik, color=ric, size=28)
+            
+            # Refresh card color and inner widget backgrounds
+            card._update_colors()
+
+        if is_card_enabled:
+            card = RoundedCard(parent, bg=card_bg, border=CARD_BORDER, command=on_card_click,
+                               hover_bg=card_hover_bg, active_border=active_border, active_width=active_width, hover_border=ACCENT)
+        else:
+            card = RoundedCard(parent, bg=card_bg, border=CARD_BORDER)
+
+        card.pack(fill="x", pady=(0, 14))
+        body = card.body
+
+        # Pack main row inside card body
+        main_row = tk.Frame(body, bg=card_bg)
+        main_row.pack(fill="both", expand=True, padx=4, pady=4)
+        
+        # Left frame: Large icon
+        left_frame = tk.Frame(main_row, bg=card_bg)
+        left_frame.pack(side="left", padx=(0, 16), fill="y")
+        plugin_icon_color = ACCENT if is_card_enabled else DISABLED_TEXT
+        p_icon_canvas = icon_canvas(left_frame, icon_kind, color=plugin_icon_color, size=36, bg=card_bg)
+        p_icon_canvas.pack(anchor="center", expand=True)
+
+        # Middle frame: Title, Description, and Status message
+        mid_frame = tk.Frame(main_row, bg=card_bg)
+        mid_frame.pack(side="left", fill="both", expand=True)
+        
+        title_label = tk.Label(mid_frame, text=title, bg=card_bg, fg=TEXT, font=F_CARD_TITLE, anchor="w")
+        title_label.pack(anchor="w", pady=(2, 0))
+        
+        desc_label = autowrap_label(mid_frame, description, fg=TEXT_MUTED, bg=card_bg, font=F_SMALL)
+        desc_label.pack(anchor="w", fill="x", pady=(2, 4))
+        
+        status_label = tk.Label(mid_frame, text=status_text, bg=card_bg, fg=status_color, font=F_BODY_B, anchor="w")
+        status_label.pack(anchor="w", pady=(0, 2))
+        
+        # Right frame: Large checkmark/trash/circle icon
+        right_frame = tk.Frame(main_row, bg=card_bg)
+        right_frame.pack(side="right", padx=(16, 0), fill="y")
+        
+        right_canvas = icon_canvas(right_frame, right_icon_kind, color=right_icon_color, size=28, bg=card_bg)
+        right_canvas.pack(anchor="center", expand=True)
+
+        if extra:
+            extra_frame = tk.Frame(body, bg=card_bg)
+            extra_frame.pack(fill="x", pady=(6, 0), padx=(52, 0))
+            extra(extra_frame)
+
+        if not is_card_enabled and disabled_reason:
+            callout_frame = tk.Frame(body, bg=card_bg)
+            callout_frame.pack(fill="x", pady=(6, 0), padx=(52, 0))
+            callout(callout_frame, disabled_reason, "warn")
+
         card.finalize()
 
     # -- GIMP (prerequisite; mandatory, exclusive choice of method) -------
@@ -224,33 +428,89 @@ class WizardPages:
         native = gimp_native_installed()
         appimg = appimage_present()
         distro = detect_distro()
-        card = RoundedCard(parent)
-        card.pack(fill="x", pady=(0, 4))
-        body = card.body
-        self._status_row(body, native, f"Native package ({distro or 'no supported distro detected'})"
-                                        + (" — installed" if native else " — not installed"))
-        self._status_row(body, appimg, f"AppImage in {APPIMAGE_DIR}"
-                                        + (" — installed" if appimg else " — not installed"))
 
-        btn_row = tk.Frame(body, bg=CARD_BG)
-        btn_row.pack(fill="x", pady=(6, 0))
         pm_selected = self.plan.has("gimp_install_pm")
         ai_selected = self.plan.has("gimp_install_appimage")
-        pm_btn = RoundedButton(
-            btn_row, "Install via package manager" + (" ✓" if pm_selected else ""), icon="install",
-            variant="success", width=270, command=lambda: self._wizard_pick_gimp_method("pm"))
-        pm_btn.pack(side="left", padx=(0, 8))
-        pm_btn.set_enabled(bool(distro))
-        ai_btn = RoundedButton(
-            btn_row, "Install AppImage" + (" ✓" if ai_selected else ""), icon="install",
-            variant="success", width=210, command=lambda: self._wizard_pick_gimp_method("appimage"))
-        ai_btn.pack(side="left")
+
+        # Container to hold centered cards
+        container = tk.Frame(parent, bg=BG)
+        container.pack(expand=True, fill="both", pady=40)
+        
+        center_frame = tk.Frame(container, bg=BG)
+        center_frame.place(relx=0.5, rely=0.45, anchor="center")
+
+        # Card 1: Package Manager
+        pm_card_bg = "#152e20" if pm_selected else (CARD_BG if distro else DISABLED_BG)
+        pm_card_hover_bg = "#1e3d2c" if pm_selected else ("#2f323a" if distro else DISABLED_BG)
+        pm_card_border = CARD_BORDER if distro else DISABLED_BG
+        pm_command = (lambda: self._wizard_pick_gimp_method("pm")) if distro else None
+
+        pm_card = RoundedCard(
+            center_frame,
+            bg=pm_card_bg,
+            border=pm_card_border,
+            command=pm_command,
+            hover_bg=pm_card_hover_bg,
+            active_border=SUCCESS if pm_selected else None,
+            active_width=2 if pm_selected else 1,
+            hover_border=ACCENT if distro else None,
+            width=360,
+            height=280
+        )
+        pm_card.pack(side="left", padx=18)
+        
+        # Content for Card 1
+        body1 = pm_card.body
+        distro_icon = distro if distro else "linux"
+        icon_color = SUCCESS if (native or pm_selected) else TEXT_MUTED
+        icon_canvas(body1, distro_icon, color=icon_color, size=64, bg=pm_card_bg).pack(pady=(20, 10))
+        
+        tk.Label(body1, text="Package Manager", bg=pm_card_bg, fg=TEXT, font=F_CARD_TITLE).pack(pady=(0, 4))
+        
+        distro_name = distro.capitalize() if distro else "Linux"
+        tk.Label(body1, text=f"Use system package manager ({distro_name})", bg=pm_card_bg, fg=TEXT_MUTED, font=F_SMALL).pack(pady=(0, 15))
+        
+        status_text1 = "Installed ✓" if native else "Not installed"
+        status_color1 = SUCCESS if native else TEXT_MUTED
+        tk.Label(body1, text=status_text1, bg=pm_card_bg, fg=status_color1, font=F_BODY_B).pack(pady=(4, 0))
+        
         if not distro:
-            callout(body, "No supported distribution detected (arch, debian, ubuntu, fedora, opensuse) — "
-                           "use the AppImage instead.", "warn")
-        callout(body, "GIMP is a prerequisite for everything else, so this page can't be skipped — "
-                      "pick one of the two methods above to continue.", "info")
-        card.finalize()
+            autowrap_label(body1, "No supported distro detected", 
+                           fg=WARNING, bg=pm_card_bg, font=F_SMALL, justify="center").pack(pady=(6, 0))
+            
+        pm_card.finalize()
+
+        # Card 2: AppImage
+        ai_card_bg = "#152e20" if ai_selected else CARD_BG
+        ai_card_hover_bg = "#1e3d2c" if ai_selected else "#2f323a"
+        ai_card = RoundedCard(
+            center_frame,
+            bg=ai_card_bg,
+            border=CARD_BORDER,
+            command=lambda: self._wizard_pick_gimp_method("appimage"),
+            hover_bg=ai_card_hover_bg,
+            active_border=SUCCESS if ai_selected else None,
+            active_width=2 if ai_selected else 1,
+            hover_border=ACCENT,
+            width=360,
+            height=280
+        )
+        ai_card.pack(side="left", padx=18)
+        
+        # Content for Card 2
+        body2 = ai_card.body
+        icon_color2 = SUCCESS if (appimg or ai_selected) else TEXT_MUTED
+        icon_canvas(body2, "box", color=icon_color2, size=64, bg=ai_card_bg).pack(pady=(20, 10))
+        
+        tk.Label(body2, text="AppImage", bg=ai_card_bg, fg=TEXT, font=F_CARD_TITLE).pack(pady=(0, 4))
+        
+        tk.Label(body2, text="Standalone AppImage in Applications folder", bg=ai_card_bg, fg=TEXT_MUTED, font=F_SMALL).pack(pady=(0, 15))
+        
+        status_text2 = "Installed ✓" if appimg else "Not installed"
+        status_color2 = SUCCESS if appimg else TEXT_MUTED
+        tk.Label(body2, text=status_text2, bg=ai_card_bg, fg=status_color2, font=F_BODY_B).pack(pady=(4, 0))
+        
+        ai_card.finalize()
 
     def _wizard_pick_gimp_method(self, method: str):
         self.plan.discard("gimp_install_pm")
@@ -270,28 +530,21 @@ class WizardPages:
     # make it impossible to pick more than one thing.
 
     def _wizard_render_components(self, parent):
-        for title, renderer in (("PhotoGIMP", self._wizard_render_photogimp),
-                                ("G'MIC", self._wizard_render_gmic),
-                                ("Batcher", self._wizard_render_batcher)):
-            tk.Label(parent, text=title, bg=BG, fg=ACCENT, font=F_SECTION).pack(
-                anchor="w", pady=(4, 4))
-            renderer(parent)
+        self._wizard_render_photogimp(parent)
+        self._wizard_render_gmic(parent)
+        self._wizard_render_batcher(parent)
 
     def _wizard_render_photogimp(self, parent):
         installed = photogimp_installed()
 
         def extra(body):
-            autowrap_label(body, "Also fixes the taskbar/window icon showing a generic icon instead of "
-                                  "PhotoGIMP's — every (re)install regenerates that desktop-file fix.",
-                           fg=TEXT_MUTED, bg=CARD_BG, font=F_SMALL).pack(anchor="w", fill="x", pady=(0, 10))
             if installed:
                 RoundedButton(body, "Fix taskbar icon now", icon="refresh", variant="secondary", width=200,
                               command=self._repair_photogimp_desktop).pack(anchor="w", pady=(0, 8))
 
         self._wizard_toggle_card(
-            parent, key="photogimp", installed=installed,
-            status_text="Icons, shortcuts, splash screen, UI layout"
-                         + (" — installed" if installed else " — not installed"),
+            parent, key="photogimp", title="PhotoGIMP", icon_kind="photogimp",
+            installed=installed, description="Icons, shortcuts, splash screen, UI layout",
             install_label="Install PhotoGIMP",
             install_run=lambda job: install_photogimp(job, gimp_command=(find_gimp_command() or [None])[0]),
             uninstall_run=lambda job: remove_photogimp(job),
@@ -316,8 +569,8 @@ class WizardPages:
         installed = gmic_installed()
         available = gmic_available_on_this_release()
         self._wizard_toggle_card(
-            parent, key="gmic", installed=installed,
-            status_text="Extra filter collection for GIMP" + (" — installed" if installed else " — not installed"),
+            parent, key="gmic", title="G'MIC", icon_kind="gmic",
+            installed=installed, description="Extra filter collection for GIMP",
             install_label="Install G'MIC",
             install_run=lambda job: install_gmic_only(job),
             uninstall_run=lambda job: remove_gmic_only(job),
@@ -393,61 +646,57 @@ class WizardPages:
         ready = backend_ready()
         exists = venv_exists()
         fully_ready = plugin_ok and ready
-        setup_install_key, setup_remove_key = "sam_setup:install", "sam_setup:remove"
-
-        def sam_present_after() -> bool:
-            if fully_ready:
-                return not self.plan.has(setup_remove_key)
-            return self.plan.has(setup_install_key)
+        setup_install_key = "sam_setup:install"
 
         model_widgets: list[tuple] = []       # (button, spec, installed)
         queue_all_buttons: list = []
 
-        # -- combined plug-in + backend card --
+        # -- PyTorch Build Selector Card (Compact and Clean) --
         card = RoundedCard(parent)
         card.pack(fill="x", pady=(0, 10))
         body = card.body
-        self._status_row(body, plugin_ok, "SAM plug-in files"
-                          + (" — installed" if plugin_ok else " — not installed"))
-        self._status_row(body, ready, "Python backend (PyTorch venv)"
-                          + (" — ready" if ready else " — not ready"))
-        if ready:
-            callout(body, f"Ready at {VENV_DIR}", "ok")
-        elif exists:
-            callout(body, "A virtualenv exists but PyTorch isn't importable — Repair will retry it.", "warn")
-        else:
-            callout(body, "Not set up yet.", "warn")
-        tk.Label(body, text="PyTorch build", bg=CARD_BG, fg=TEXT, font=F_BODY_B).pack(
-            anchor="w", pady=(8, 6))
+        
+        row = tk.Frame(body, bg=CARD_BG)
+        row.pack(fill="x", padx=4, pady=4)
+        
+        tk.Label(row, text="PyTorch build", bg=CARD_BG, fg=TEXT, font=F_BODY_B).pack(
+            side="left", padx=(0, 12))
+            
         combo = ctk.CTkComboBox(
-            body, variable=self.torch_choice, values=list(TORCH_INDEX_URLS.keys()),
+            row, variable=self.torch_choice, values=list(TORCH_INDEX_URLS.keys()),
             state="readonly", width=340, height=36, corner_radius=10, font=F_BODY,
             fg_color=FIELD_BG, border_color=CARD_BORDER, border_width=1, text_color=TEXT,
             button_color=FIELD_BG, button_hover_color=SECONDARY_HOVER,
             dropdown_fg_color=FIELD_BG, dropdown_hover_color=SECONDARY_HOVER,
             dropdown_text_color=TEXT, dropdown_font=F_BODY)
-        combo.pack(anchor="w", pady=(0, 6))
+        combo.pack(side="left")
+        
+        # Bind combobox clicks
+        combo.bind("<Button-1>", lambda e: combo._clicked(), add="+")
+        if hasattr(combo, "_entry"):
+            combo._entry.bind("<Button-1>", lambda e: combo._clicked(), add="+")
+            try:
+                combo._entry.configure(cursor="hand2")
+            except Exception:
+                pass
+        try:
+            combo.configure(cursor="hand2")
+        except Exception:
+            pass
+            
+        card.finalize()
 
-        btn_row = tk.Frame(body, bg=CARD_BG)
-        btn_row.pack(fill="x", pady=(6, 0))
-        if fully_ready:
-            setup_label, setup_kind, setup_key = "Uninstall SAM (plug-in + backend + all models)", "remove", setup_remove_key
-            setup_run = self._sam_setup_remove_run
-            setup_variant = "danger"
-        else:
-            setup_label = "Install SAM" if not (plugin_ok or exists) else "Repair SAM setup"
-            setup_kind, setup_key = "install", setup_install_key
-            setup_run = self._sam_setup_install_run()
-            setup_variant = "success"
-        setup_btn = RoundedButton(btn_row, setup_label, icon=("trash" if fully_ready else "install"),
-                                   variant=setup_variant, width=340)
-        setup_btn.pack(side="left")
-
-        def toggle_setup():
-            self.plan.toggle(PlannedAction(setup_key, setup_label, setup_kind, setup_run))
-            refresh_sam_page()
-
-        setup_btn.command = toggle_setup
+        # Helper to sync SAM setup in the plan
+        def sync_sam_setup_in_plan():
+            has_any_model_install = any(self.plan.has(f"sam_model:{spec.key}:install") for spec in MODEL_REGISTRY)
+            if self.plan.has("sam3:install"):
+                has_any_model_install = True
+                
+            if has_any_model_install:
+                if not self.plan.has(setup_install_key):
+                    self.plan.add(PlannedAction(setup_install_key, "Install SAM backend", "install", self._sam_setup_install_run()))
+            else:
+                self.plan.discard(setup_install_key)
 
         # -- models, by family --
         autowrap_label(
@@ -456,9 +705,6 @@ class WizardPages:
             "are never a checkbox again — Remove just queues their deletion for the final install step.",
             fg=TEXT_MUTED, bg=BG, font=F_SMALL,
         ).pack(anchor="w", fill="x", pady=(6, 10))
-        gate_note = callout(parent, "Models need the SAM setup above first.", "warn")
-        if sam_present_after():
-            gate_note.pack_forget()
 
         rec_key = recommended_model_key(self.hw)
         for family in ("SAM1", "SAM2"):
@@ -509,11 +755,13 @@ class WizardPages:
                 btn.command = lambda: (
                     self.plan.toggle(PlannedAction(remove_key, f"Remove {spec.label}", "remove",
                                                     self._sam_model_remove_run(spec))),
+                    sync_sam_setup_in_plan(),
                     refresh_sam_page())
             else:
                 btn.command = lambda: (
                     self.plan.toggle(PlannedAction(install_key, f"Download {spec.label}", "install",
                                                     self._sam_model_install_run(spec))),
+                    sync_sam_setup_in_plan(),
                     refresh_sam_page())
 
         for btn, spec, installed in model_widgets:
@@ -529,24 +777,17 @@ class WizardPages:
                 if not self.plan.has(key):
                     self.plan.add(PlannedAction(key, f"Download {spec.label}", "install",
                                                  self._sam_model_install_run(spec)))
+            sync_sam_setup_in_plan()
             refresh_sam_page()
 
         families = ("SAM1", "SAM2")
         for fam, qbtn in zip(families, queue_all_buttons):
             qbtn.command = lambda fam=fam: queue_all(fam)
 
-        sam3_widgets = self._wizard_render_sam3(parent, sam_present_after)
+        # SAM3 is always enabled because setup is automatic
+        sam3_widgets = self._wizard_render_sam3(parent, lambda: True, on_toggle=lambda: (sync_sam_setup_in_plan(), refresh_sam_page()))
 
         def refresh_sam_page():
-            present = sam_present_after()
-            if fully_ready:
-                setup_btn.set_text(setup_label + (" ✓" if self.plan.has(setup_remove_key) else ""))
-            else:
-                setup_btn.set_text(setup_label + (" ✓" if self.plan.has(setup_install_key) else ""))
-            if present:
-                gate_note.pack_forget()
-            else:
-                gate_note.pack(fill="x", pady=(4, 12))
             for btn, spec, installed in model_widgets:
                 if installed:
                     q = self.plan.has(f"sam_model:{spec.key}:remove")
@@ -554,10 +795,10 @@ class WizardPages:
                 else:
                     q = self.plan.has(f"sam_model:{spec.key}:install")
                     btn.set_text("Add to plan" + (" ✓" if q else ""))
-                    btn.set_enabled(present or q)
+                    btn.set_enabled(True)
             for qbtn in queue_all_buttons:
-                qbtn.set_enabled(present)
-            sam3_widgets.refresh(present)
+                qbtn.set_enabled(True)
+            sam3_widgets.refresh(True)
 
         refresh_sam_page()
 
@@ -573,7 +814,7 @@ class WizardPages:
         def refresh(self, present: bool):
             self._refresh_fn(present)
 
-    def _wizard_render_sam3(self, parent, sam_present_after):
+    def _wizard_render_sam3(self, parent, sam_present_after, on_toggle=None):
         spec = MODEL_BY_KEY["sam3"]
         installed = model_installed(spec)
         card = RoundedCard(parent)
@@ -625,8 +866,6 @@ class WizardPages:
                                 border_color=CARD_BORDER, border_width=1, text_color=TEXT)
         hf_entry.pack(side="left", padx=8)
 
-        gate_note = callout(body, "Needs the SAM setup above first.", "warn")
-
         if installed:
             sam3_btn = RoundedButton(row2, "Remove", icon="trash", variant="danger", width=130)
             sam3_btn.pack(side="left")
@@ -635,9 +874,10 @@ class WizardPages:
                 self.plan.toggle(PlannedAction(remove_key, "Remove SAM 3.1", "remove",
                                                 lambda job: remove_sam3(job)))
                 sam3_btn.set_text("Remove" + (" ✓" if self.plan.has(remove_key) else ""))
+                if on_toggle:
+                    on_toggle()
 
             sam3_btn.command = toggle_sam3
-            gate_note.pack_forget()
 
             def refresh(_present: bool):
                 pass
@@ -654,22 +894,18 @@ class WizardPages:
                 self.plan.toggle(PlannedAction(install_key, "Download SAM 3.1", "install",
                                                 lambda job: self._run_sam3_download(job)))
                 sam3_btn.set_text("Add to plan" + (" ✓" if self.plan.has(install_key) else ""))
+                if on_toggle:
+                    on_toggle()
 
             sam3_btn.command = toggle_sam3
 
             def refresh(present: bool):
                 queued = self.plan.has(install_key)
-                sam3_btn.set_enabled(present and (queued or token_entered()))
-                if present:
-                    gate_note.pack_forget()
-                else:
-                    gate_note.pack(fill="x", pady=(4, 12))
+                sam3_btn.set_enabled(queued or token_entered())
 
             trace_id = self.hf_token_var.trace_add("write", lambda *_a: refresh(sam_present_after()))
 
             def _drop_token_trace(_e=None, tid=trace_id):
-                # CTk widgets forward bind() to canvas AND label, so this
-                # fires more than once; the var may also already be gone.
                 try:
                     self.hf_token_var.trace_remove("write", tid)
                 except (tk.TclError, ValueError):
@@ -695,9 +931,8 @@ class WizardPages:
     def _wizard_render_batcher(self, parent):
         installed = batcher_installed()
         self._wizard_toggle_card(
-            parent, key="batcher", installed=installed,
-            status_text="Batch image processing / export layers"
-                         + (" — installed" if installed else " — not installed"),
+            parent, key="batcher", title="Batcher", icon_kind="batcher",
+            installed=installed, description="Batch image processing / export layers",
             install_label="Install Batcher",
             install_run=lambda job: install_batcher(job),
             uninstall_run=lambda job: remove_batcher(job),
@@ -757,4 +992,5 @@ class WizardPages:
         self._refresh_wizard_body()
 
     def _wizard_start_install(self):
+        self._current_wizard_frame = None
         self.show_install_progress(list(self.plan))
