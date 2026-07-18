@@ -20,13 +20,24 @@ source "$(dirname -- "${BASH_SOURCE[0]}")/gimp.sh"
 readonly PHOTOGIMP_MANIFEST=".lazygimp-photogimp.manifest"
 LAZYGIMP_STATE_DIR="${LAZYGIMP_STATE_DIR:-${XDG_STATE_HOME:-${HOME}/.local/state}/lazygimp}"
 
-# Download and extract the pinned PhotoGIMP release; echo the extraction dir.
+# Download and extract the latest PhotoGIMP release; echo the extraction dir.
 photogimp::download() {
   require unzip
-  local tmp zip base_url
+  local tmp zip tag base_url
   tmp="$(make_tmpdir)"
   zip="${tmp}/photogimp.zip"
-  base_url="https://github.com/${PHOTOGIMP_REPO}/releases/download/${PHOTOGIMP_RELEASE_TAG}"
+  
+  tag=""
+  if have python3; then
+    tag="$(fetch "https://api.github.com/repos/${PHOTOGIMP_REPO}/releases/latest" 2>/dev/null |
+      python3 -c 'import sys, json; print(json.load(sys.stdin).get("tag_name", ""))' 2>/dev/null)"
+  fi
+  if [[ -z "$tag" ]]; then
+    tag="${PHOTOGIMP_RELEASE_TAG}"
+  fi
+  
+  log::info "using PhotoGIMP release: ${tag}"
+  base_url="https://github.com/${PHOTOGIMP_REPO}/releases/download/${tag}"
   download "${base_url}/PhotoGIMP-linux.zip" "$zip" ||
     download "${base_url}/PhotoGIMP.zip" "$zip"
   unzip -qo "$zip" -d "${tmp}/extracted"

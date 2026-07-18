@@ -90,6 +90,33 @@ except ImportError:
     _PIL_OK = False
 
 
+def clean_output_line(line: str) -> str:
+    """Strip ANSI escape sequences (colors, cursor movements) and resolve
+    carriage returns (keeping only the final overwritten text)."""
+    # Regex matching ANSI escape sequences
+    ansi_escape = re.compile(r'\x1b(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+    line = ansi_escape.sub('', line)
+    if '\r' in line:
+        parts = line.split('\r')
+        non_empty = [p for p in parts if p.strip()]
+        if non_empty:
+            line = non_empty[-1]
+        else:
+            line = parts[-1]
+    return line
+
+
+def fetch_latest_github_release_assets(repo: str) -> Optional[dict]:
+    """Fetch the latest release payload from GitHub for a given repository."""
+    url = f"https://api.github.com/repos/{repo}/releases/latest"
+    req = urllib.request.Request(url, headers={"User-Agent": "LazyGimp-Installer"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception:
+        return None
+
+
 # ---------------------------------------------------------------------------
 # Where things live on disk. The backend directory is shared with any prior
 # GIMPSAM/LazyGimp shell install (same path both used), so upgrading to this
@@ -124,7 +151,7 @@ except NameError:
 # --- upstream locations (renovate-friendly pins, all in one place) ---------
 
 PHOTOGIMP_REPO = "Diolinux/PhotoGIMP"
-PHOTOGIMP_RELEASE_TAG = "3.0"
+PHOTOGIMP_RELEASE_TAG = "3.1"
 
 BATCHER_REPO = "kamilburda/batcher"
 BATCHER_RELEASE_TAG = "1.2.9"
@@ -559,32 +586,42 @@ class Job:
         if self.log_queue is not None:
             self.log_queue.put(msg)
 
-    def run_cmd(self, cmd: list[str], **kw) -> int:
+    def run_cmd(self, cmd: list[str], *, log_as: Optional[list[str]] = None, **kw) -> int:
+        # log_as lets a call site substitute a short, redacted description
+        # for the echoed command line — needed for anything built with
+        # `-c <inline script>`, where the real argv can run to several KB
+        # and, worse, may contain secrets (e.g. an HF token interpolated
+        # into the script text) that must never hit stdout/the GUI log.
+        display = log_as if log_as is not None else cmd
         if self.cancel_event.is_set():
-            self.log("Cancelled — skipping: " + " ".join(cmd))
+            self.log("Cancelled — skipping: " + " ".join(display))
             return -1
-        self.log("$ " + " ".join(cmd))
+        self.log("$ " + " ".join(display))
         self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, **kw)
         for line in iter(self.proc.stdout.readline, ""):
             if line:
-                self.log(line.rstrip("\n"))
+                clean = clean_output_line(line.rstrip("\n"))
+                if clean:
+                    self.log(clean)
         self.proc.wait()
         rc = self.proc.returncode
         self.proc = None
         return rc
 
-    def run_cmd_capture(self, cmd: list[str], **kw) -> tuple[int, list[str]]:
+    def run_cmd_capture(self, cmd: list[str], *, log_as: Optional[list[str]] = None, **kw) -> tuple[int, list[str]]:
+        display = log_as if log_as is not None else cmd
         if self.cancel_event.is_set():
-            self.log("Cancelled — skipping: " + " ".join(cmd))
+            self.log("Cancelled — skipping: " + " ".join(display))
             return -1, []
-        self.log("$ " + " ".join(cmd))
+        self.log("$ " + " ".join(display))
         self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, **kw)
         lines: list[str] = []
         for line in iter(self.proc.stdout.readline, ""):
             if line:
-                clean = line.rstrip("\n")
-                self.log(clean)
-                lines.append(clean)
+                clean = clean_output_line(line.rstrip("\n"))
+                if clean:
+                    self.log(clean)
+                    lines.append(clean)
         self.proc.wait()
         rc = self.proc.returncode
         self.proc = None
@@ -762,7 +799,9 @@ def run_cmd_sudo_pty(job: Job, cmd: list[str], env: dict, password_prompt) -> in
                 buf += chunk
                 while b"\n" in buf:
                     line, buf = buf.split(b"\n", 1)
-                    job.log(line.decode(errors="replace").rstrip("\r"))
+                    clean = clean_output_line(line.decode(errors="replace").rstrip("\r"))
+                    if clean:
+                        job.log(clean)
                 tail = buf.decode(errors="replace")
                 if tail and tail.rstrip().endswith(":") and "password" in tail.lower():
                     pw = password_prompt(tail.strip())
@@ -782,12 +821,16 @@ def run_cmd_sudo_pty(job: Job, cmd: list[str], env: dict, password_prompt) -> in
                 except OSError:
                     pass
                 if buf:
-                    job.log(buf.decode(errors="replace"))
+                    clean = clean_output_line(buf.decode(errors="replace"))
+                    if clean:
+                        job.log(clean)
                     buf = b""
                 return os.WEXITSTATUS(status) if os.WIFEXITED(status) else 1
     finally:
         if buf:
-            job.log(buf.decode(errors="replace"))
+            clean = clean_output_line(buf.decode(errors="replace"))
+            if clean:
+                job.log(clean)
         try:
             os.close(master_fd)
         except OSError:
@@ -999,10 +1042,36 @@ def photogimp_installed() -> bool:
 def _photogimp_download_and_extract(job: Job) -> Optional[str]:
     tmp = tempfile.mkdtemp(prefix="lazygimp-photogimp-")
     zip_path = os.path.join(tmp, "photogimp.zip")
-    base_url = f"https://github.com/{PHOTOGIMP_REPO}/releases/download/{PHOTOGIMP_RELEASE_TAG}"
-    if not job.download(f"{base_url}/PhotoGIMP-linux.zip", zip_path):
-        if not job.download(f"{base_url}/PhotoGIMP.zip", zip_path):
+    
+    release_info = fetch_latest_github_release_assets(PHOTOGIMP_REPO)
+    download_url = None
+    if release_info:
+        assets = release_info.get("assets", [])
+        for asset in assets:
+            if asset.get("name") == "PhotoGIMP-linux.zip":
+                download_url = asset.get("browser_download_url")
+                break
+        if not download_url:
+            for asset in assets:
+                if asset.get("name") == "PhotoGIMP.zip":
+                    download_url = asset.get("browser_download_url")
+                    break
+        if download_url:
+            job.log(f"Resolved latest PhotoGIMP download URL from GitHub: {download_url}")
+
+    if not download_url:
+        job.log(f"Falling back to pinned PhotoGIMP release tag: {PHOTOGIMP_RELEASE_TAG}")
+        base_url = f"https://github.com/{PHOTOGIMP_REPO}/releases/download/{PHOTOGIMP_RELEASE_TAG}"
+        download_url = f"{base_url}/PhotoGIMP-linux.zip"
+        
+    if not job.download(download_url, zip_path):
+        if not release_info:  # if we fell back, try the second asset
+            fallback_url = f"https://github.com/{PHOTOGIMP_REPO}/releases/download/{PHOTOGIMP_RELEASE_TAG}/PhotoGIMP.zip"
+            if not job.download(fallback_url, zip_path):
+                return None
+        else:
             return None
+            
     extracted = os.path.join(tmp, "extracted")
     with zipfile.ZipFile(zip_path) as zf:
         zf.extractall(extracted)
@@ -1319,8 +1388,24 @@ def install_batcher(job: Job) -> bool:
     if not dest_dir:
         job.log("ERROR: no GIMP plug-ins directory found — install GIMP first.")
         return False
-    url = f"https://github.com/{BATCHER_REPO}/releases/download/{BATCHER_RELEASE_TAG}/batcher-{BATCHER_RELEASE_TAG}.zip"
-    src = _download_zip_and_find(job, url, "batcher")
+    
+    release_info = fetch_latest_github_release_assets(BATCHER_REPO)
+    download_url = None
+    if release_info:
+        assets = release_info.get("assets", [])
+        for asset in assets:
+            name = asset.get("name", "")
+            if name.startswith("batcher-") and name.endswith(".zip"):
+                download_url = asset.get("browser_download_url")
+                break
+        if download_url:
+            job.log(f"Resolved latest Batcher download URL from GitHub: {download_url}")
+
+    if not download_url:
+        job.log(f"Falling back to pinned Batcher release tag: {BATCHER_RELEASE_TAG}")
+        download_url = f"https://github.com/{BATCHER_REPO}/releases/download/{BATCHER_RELEASE_TAG}/batcher-{BATCHER_RELEASE_TAG}.zip"
+
+    src = _download_zip_and_find(job, download_url, "batcher")
     if not src:
         job.log("ERROR: 'batcher' folder not found inside the downloaded archive.")
         return False
@@ -1624,10 +1709,25 @@ def download_sam3(job: Job, token: str) -> tuple[bool, Optional[str]]:
     os.makedirs(dest, exist_ok=True)
     script = build_sam3_download_script(dest, token)
     job.log(f"Checking Hugging Face access for {SAM3_HF_REPO_ID}...")
-    rc, lines = job.run_cmd_capture([VENV_PYTHON, "-c", script])
+    # NEVER echo `script` itself: it has the HF token interpolated into its
+    # source (see build_sam3_download_script) and, being several KB long, a
+    # raw dump also lands the script's own `print('ERROR-...')` lines in the
+    # log right after the "Checking..." message — easy to misread as a real
+    # failure even when the download goes on to succeed. `log_as` swaps in
+    # a short, secret-free description for display purposes only; the real
+    # `cmd` (with the real token) still runs unchanged.
+    rc, lines = job.run_cmd_capture(
+        [VENV_PYTHON, "-c", script],
+        log_as=[VENV_PYTHON, "-c", f"<verify token, then download {SAM3_HF_REPO_ID} to {dest}>"],
+    )
     ok = rc == 0
     tag = classify_sam3_failure(lines)
-    job.log("SAM 3.1 checkpoint ready." if ok else "Download failed.")
+    if ok:
+        job.log("SAM 3.1 checkpoint ready.")
+    # On failure, leave the message to the caller: both the wizard and the
+    # CLI already follow up with sam3_failure_message(tag), which names the
+    # actual cause (bad token / not yet approved / offline) — a bare
+    # "Download failed." here would only precede that with a useless line.
     return ok, tag
 
 
@@ -2667,8 +2767,7 @@ if _TK_OK:
             ("gimp_install_", "gimp"),
             ("photogimp:", "photogimp"),
             ("gmic:", "gmic"),
-            ("sam_plugin:", "sam"),
-            ("sam_backend:", "sam"),
+            ("sam_setup:", "sam"),
             ("sam_model:", "sam"),
             ("sam3:", "sam"),
             ("batcher:", "batcher"),
@@ -2803,8 +2902,8 @@ if _TK_OK:
                                  install_run, uninstall_run, uninstall_label: str = "Uninstall",
                                  install_enabled: bool = True, disabled_reason: Optional[str] = None,
                                  advance: bool = True, extra=None):
-            """One reusable card covering every simple component page
-            (PhotoGIMP, G'MIC, the SAM plug-in, the SAM backend, Batcher):
+            """One reusable card covering every single-decision component page
+            (PhotoGIMP, G'MIC, Batcher):
             not installed -> one green toggle that queues/unqueues Install;
             installed -> one red toggle that queues/unqueues Uninstall.
             Exactly one button, so there's never a second, greyed-out one
@@ -2936,90 +3035,39 @@ if _TK_OK:
                                   "for a manual build."),
             )
 
-        # -- SAM: plug-in + backend + models + SAM 3.1 ---------------------------
-        # The backend only ever makes sense once the plug-in is (or will be)
-        # present, and models only ever make sense once both are — so each
-        # tier gates the next, exactly mirroring what actually has to exist
-        # on disk for SAM to work at all.
+        # -- SAM: one setup action (plug-in + backend) + models + SAM 3.1 -------
+        # The plug-in and the Python backend are two files on disk from the
+        # user's point of view — "SAM works or it doesn't" — so they're one
+        # queueable action, not two separate questions. Its single run()
+        # re-checks what's actually missing at execution time and only does
+        # that, so the very same button is correct whether nothing is
+        # installed yet, only the backend is broken, or everything is already
+        # fine (in which case the page offers Uninstall instead).
+        #
+        # Every widget on this page is built exactly once per visit and then
+        # only ever has its text/enabled state *updated* afterwards (never
+        # destroyed and rebuilt) — refresh_sam_page() below is the one place
+        # that happens, which is what keeps this page from flashing on every
+        # click the way a full-page rebuild would.
 
-        def _sam_plugin_will_be_present(self) -> bool:
-            if self.plan.has("sam_plugin:remove"):
-                return False
-            return segany_plugin_installed() or self.plan.has("sam_plugin:install")
-
-        def _sam_backend_will_be_present(self) -> bool:
-            if self.plan.has("sam_backend:remove"):
-                return False
-            return backend_ready() or self.plan.has("sam_backend:install")
-
-        def _wizard_render_sam(self, parent):
-            plugin_ok = self._sam_plugin_will_be_present()
-            self._wizard_toggle_card(
-                parent, key="sam_plugin", installed=segany_plugin_installed(),
-                status_text="Plug-in files" + (" — installed" if segany_plugin_installed() else " — not installed"),
-                install_label="Install SAM plug-in",
-                install_run=lambda job: install_segany_plugin(job),
-                uninstall_run=lambda job: remove_segany_plugin(job),
-                advance=False,
-            )
-
-            ready = backend_ready()
-            exists = venv_exists()
-
-            def backend_extra(body):
-                if ready:
-                    callout(body, f"Ready at {VENV_DIR}", "ok")
-                elif exists:
-                    callout(body, "A virtualenv exists but PyTorch isn't importable — queuing Install backend "
-                                   "again will repair it.", "warn")
+        def _sam_setup_install_run(self):
+            def run(job: Job):
+                if not segany_plugin_installed():
+                    job.log("Installing the SAM plug-in...")
+                    install_segany_plugin(job)
                 else:
-                    callout(body, "Not set up yet.", "warn")
-                tk.Label(body, text="PyTorch build", bg=CARD_BG, fg=TEXT, font=("Sans", 10, "bold")).pack(
-                    anchor="w", pady=(8, 6))
-                combo = ttk.Combobox(body, textvariable=self.torch_choice, values=list(TORCH_INDEX_URLS.keys()),
-                                      state="readonly", width=34, font=("Sans", 10))
-                combo.pack(anchor="w", pady=(0, 6))
-                flatten_entry(combo)
+                    job.log("SAM plug-in already installed.")
+                if not backend_ready():
+                    job.log("Setting up the SAM Python backend...")
+                    install_sam_backend(job, TORCH_INDEX_URLS[self.torch_choice.get()])
+                else:
+                    job.log("SAM Python backend already ready.")
+            return run
 
-            self._wizard_toggle_card(
-                parent, key="sam_backend", installed=ready,
-                status_text="Python backend (PyTorch venv)" + (" — ready" if ready else " — not ready"),
-                install_label="Repair backend" if exists else "Install backend",
-                install_run=lambda job: install_sam_backend(job, TORCH_INDEX_URLS[self.torch_choice.get()]),
-                uninstall_run=lambda job: remove_sam_backend(job),
-                uninstall_label="Remove backend (+ all models)",
-                install_enabled=plugin_ok,
-                disabled_reason=None if plugin_ok else "Install (or keep) the SAM plug-in above first.",
-                advance=False,
-                extra=backend_extra,
-            )
-
-            models_ok = plugin_ok and self._sam_backend_will_be_present()
-            autowrap_label(
-                parent,
-                "Quality/Speed are rough 1-5 estimates, comparable within a family. Already-downloaded models "
-                "are never a checkbox again — Remove just queues their deletion for the final install step.",
-                fg=TEXT_MUTED, bg=BG, font=("Sans", 9),
-            ).pack(anchor="w", fill="x", pady=(6, 10))
-            if not models_ok:
-                callout(parent, "Models need the plug-in and the Python backend above first.", "warn")
-            rec_key = recommended_model_key(self.hw)
-            for family in ("SAM1", "SAM2"):
-                fam_card = RoundedCard(parent)
-                fam_card.pack(fill="x", pady=(0, 10))
-                head = tk.Frame(fam_card.body, bg=CARD_BG)
-                head.pack(fill="x", pady=(0, 4))
-                tk.Label(head, text=family, bg=CARD_BG, fg=ACCENT, font=("Sans", 11, "bold")).pack(side="left")
-                queue_all_btn = RoundedButton(head, "Queue all missing", icon="install", variant="secondary",
-                                               width=170, command=lambda fam=family: self._wizard_queue_all_models(fam))
-                queue_all_btn.pack(side="right")
-                queue_all_btn.set_enabled(models_ok)
-                for spec in [m for m in MODEL_REGISTRY if m.family == family]:
-                    self._wizard_render_model_row(fam_card.body, spec, recommended=(spec.key == rec_key),
-                                                   enabled=models_ok)
-                fam_card.finalize()
-
-            self._wizard_render_sam3(parent, enabled=models_ok)
+        @staticmethod
+        def _sam_setup_remove_run(job: Job):
+            remove_segany_plugin(job)
+            remove_sam_backend(job)
 
         @staticmethod
         def _sam_model_install_run(spec: ModelSpec):
@@ -3047,63 +3095,188 @@ if _TK_OK:
                     job.log(f"ERROR removing {dest}: {e}")
             return run
 
-        def _wizard_render_model_row(self, parent, spec: ModelSpec, recommended: bool, enabled: bool):
-            row = RoundedCard(parent, pad=14, radius=16)
-            row.pack(fill="x", pady=6)
-            body = row.body
-            top = tk.Frame(body, bg=CARD_BG)
-            top.pack(fill="x")
-            left = tk.Frame(top, bg=CARD_BG)
-            left.pack(side="left", fill="x", expand=True)
-            name_row = tk.Frame(left, bg=CARD_BG)
-            name_row.pack(anchor="w")
-            tk.Label(name_row, text=spec.label, bg=CARD_BG, fg=TEXT, font=("Sans", 12, "bold")).pack(side="left")
-            tk.Label(name_row, text=f"   {spec.size}", bg=CARD_BG, fg=TEXT_MUTED, font=("Sans", 9)).pack(side="left")
-            if recommended:
-                tk.Label(name_row, text="  ★ Recommended", bg=CARD_BG, fg=ACCENT, font=("Sans", 9, "bold")).pack(
-                    side="left")
-            rating_widget(left, spec.quality, spec.speed, bg=CARD_BG).pack(anchor="w", pady=(4, 0))
+        def _wizard_render_sam(self, parent):
+            plugin_ok = segany_plugin_installed()
+            ready = backend_ready()
+            exists = venv_exists()
+            fully_ready = plugin_ok and ready
+            setup_install_key, setup_remove_key = "sam_setup:install", "sam_setup:remove"
 
-            installed = model_installed(spec)
-            install_key, remove_key = f"sam_model:{spec.key}:install", f"sam_model:{spec.key}:remove"
+            def sam_present_after() -> bool:
+                if fully_ready:
+                    return not self.plan.has(setup_remove_key)
+                return self.plan.has(setup_install_key)
 
-            right = tk.Frame(top, bg=CARD_BG)
-            right.pack(side="right")
-            if installed:
-                queued = self.plan.has(remove_key)
-                RoundedButton(
-                    right, "Remove" + (" ✓" if queued else ""), icon="trash", variant="danger", width=160,
-                    command=lambda: self._wizard_toggle_and_advance(
-                        remove_key, f"Remove {spec.label}", "remove", self._sam_model_remove_run(spec),
-                        advance=False),
-                ).pack(side="left")
+            model_widgets: list[tuple] = []       # (button, spec, installed)
+            queue_all_buttons: list = []
+
+            # -- combined plug-in + backend card --
+            card = RoundedCard(parent)
+            card.pack(fill="x", pady=(0, 10))
+            body = card.body
+            self._status_row(body, plugin_ok, "SAM plug-in files"
+                              + (" — installed" if plugin_ok else " — not installed"))
+            self._status_row(body, ready, "Python backend (PyTorch venv)"
+                              + (" — ready" if ready else " — not ready"))
+            if ready:
+                callout(body, f"Ready at {VENV_DIR}", "ok")
+            elif exists:
+                callout(body, "A virtualenv exists but PyTorch isn't importable — Repair will retry it.", "warn")
             else:
-                queued = self.plan.has(install_key)
-                btn = RoundedButton(
-                    right, "Add to plan" + (" ✓" if queued else ""), icon="install", variant="success", width=160,
-                    command=lambda: self._wizard_toggle_and_advance(
-                        install_key, f"Download {spec.label}", "install", self._sam_model_install_run(spec),
-                        advance=False),
-                )
-                btn.pack(side="left")
-                btn.set_enabled(enabled or queued)
-            row.finalize()
+                callout(body, "Not set up yet.", "warn")
+            tk.Label(body, text="PyTorch build", bg=CARD_BG, fg=TEXT, font=("Sans", 10, "bold")).pack(
+                anchor="w", pady=(8, 6))
+            combo = ttk.Combobox(body, textvariable=self.torch_choice, values=list(TORCH_INDEX_URLS.keys()),
+                                  state="readonly", width=34, font=("Sans", 10))
+            combo.pack(anchor="w", pady=(0, 6))
+            flatten_entry(combo)
 
-        def _wizard_queue_all_models(self, family: str):
-            missing = [m for m in MODEL_REGISTRY if m.family == family and not model_installed(m)]
-            if not missing:
-                themed_info(self.root, "Nothing to do", f"All {family} models are already installed.")
-                return
-            for spec in missing:
-                key = f"sam_model:{spec.key}:install"
-                if not self.plan.has(key):
-                    self.plan.add(PlannedAction(key, f"Download {spec.label}", "install",
-                                                 self._sam_model_install_run(spec)))
-            self._refresh_wizard_body()
+            btn_row = tk.Frame(body, bg=CARD_BG)
+            btn_row.pack(fill="x", pady=(6, 0))
+            if fully_ready:
+                setup_label, setup_kind, setup_key = "Uninstall SAM (plug-in + backend + all models)", "remove", setup_remove_key
+                setup_run = self._sam_setup_remove_run
+                setup_variant = "danger"
+            else:
+                setup_label = "Install SAM" if not (plugin_ok or exists) else "Repair SAM setup"
+                setup_kind, setup_key = "install", setup_install_key
+                setup_run = self._sam_setup_install_run()
+                setup_variant = "success"
+            setup_btn = RoundedButton(btn_row, setup_label, icon=("trash" if fully_ready else "install"),
+                                       variant=setup_variant, width=340)
+            setup_btn.pack(side="left")
 
-        # -- SAM 3.1 (gated on Hugging Face) --
+            def toggle_setup():
+                self.plan.toggle(PlannedAction(setup_key, setup_label, setup_kind, setup_run))
+                refresh_sam_page()
 
-        def _wizard_render_sam3(self, parent, enabled: bool):
+            setup_btn.command = toggle_setup
+
+            # -- models, by family --
+            autowrap_label(
+                parent,
+                "Quality/Speed are rough 1-5 estimates, comparable within a family. Already-downloaded models "
+                "are never a checkbox again — Remove just queues their deletion for the final install step.",
+                fg=TEXT_MUTED, bg=BG, font=("Sans", 9),
+            ).pack(anchor="w", fill="x", pady=(6, 10))
+            gate_note = callout(parent, "Models need the SAM setup above first.", "warn")
+            if sam_present_after():
+                gate_note.pack_forget()
+
+            rec_key = recommended_model_key(self.hw)
+            for family in ("SAM1", "SAM2"):
+                fam_card = RoundedCard(parent)
+                fam_card.pack(fill="x", pady=(0, 10))
+                head = tk.Frame(fam_card.body, bg=CARD_BG)
+                head.pack(fill="x", pady=(0, 4))
+                tk.Label(head, text=family, bg=CARD_BG, fg=ACCENT, font=("Sans", 11, "bold")).pack(side="left")
+                queue_all_btn = RoundedButton(head, "Queue all missing", icon="install", variant="secondary",
+                                               width=170)
+                queue_all_btn.pack(side="right")
+                queue_all_buttons.append(queue_all_btn)
+
+                for spec in [m for m in MODEL_REGISTRY if m.family == family]:
+                    row = RoundedCard(fam_card.body, pad=14, radius=16)
+                    row.pack(fill="x", pady=6)
+                    rbody = row.body
+                    top = tk.Frame(rbody, bg=CARD_BG)
+                    top.pack(fill="x")
+                    left = tk.Frame(top, bg=CARD_BG)
+                    left.pack(side="left", fill="x", expand=True)
+                    name_row = tk.Frame(left, bg=CARD_BG)
+                    name_row.pack(anchor="w")
+                    tk.Label(name_row, text=spec.label, bg=CARD_BG, fg=TEXT, font=("Sans", 12, "bold")).pack(
+                        side="left")
+                    tk.Label(name_row, text=f"   {spec.size}", bg=CARD_BG, fg=TEXT_MUTED, font=("Sans", 9)).pack(
+                        side="left")
+                    if spec.key == rec_key:
+                        tk.Label(name_row, text="  ★ Recommended", bg=CARD_BG, fg=ACCENT,
+                                 font=("Sans", 9, "bold")).pack(side="left")
+                    rating_widget(left, spec.quality, spec.speed, bg=CARD_BG).pack(anchor="w", pady=(4, 0))
+
+                    installed = model_installed(spec)
+                    right = tk.Frame(top, bg=CARD_BG)
+                    right.pack(side="right")
+                    if installed:
+                        btn = RoundedButton(right, "Remove", icon="trash", variant="danger", width=160)
+                    else:
+                        btn = RoundedButton(right, "Add to plan", icon="install", variant="success", width=160)
+                    btn.pack(side="left")
+                    model_widgets.append((btn, spec, installed))
+                    row.finalize()
+                fam_card.finalize()
+
+            def bind_model_row(btn, spec, installed):
+                install_key, remove_key = f"sam_model:{spec.key}:install", f"sam_model:{spec.key}:remove"
+                if installed:
+                    btn.command = lambda: (
+                        self.plan.toggle(PlannedAction(remove_key, f"Remove {spec.label}", "remove",
+                                                        self._sam_model_remove_run(spec))),
+                        refresh_sam_page())
+                else:
+                    btn.command = lambda: (
+                        self.plan.toggle(PlannedAction(install_key, f"Download {spec.label}", "install",
+                                                        self._sam_model_install_run(spec))),
+                        refresh_sam_page())
+
+            for btn, spec, installed in model_widgets:
+                bind_model_row(btn, spec, installed)
+
+            def queue_all(family):
+                missing = [m for m in MODEL_REGISTRY if m.family == family and not model_installed(m)]
+                if not missing:
+                    themed_info(self.root, "Nothing to do", f"All {family} models are already installed.")
+                    return
+                for spec in missing:
+                    key = f"sam_model:{spec.key}:install"
+                    if not self.plan.has(key):
+                        self.plan.add(PlannedAction(key, f"Download {spec.label}", "install",
+                                                     self._sam_model_install_run(spec)))
+                refresh_sam_page()
+
+            families = ("SAM1", "SAM2")
+            for fam, qbtn in zip(families, queue_all_buttons):
+                qbtn.command = lambda fam=fam: queue_all(fam)
+
+            sam3_widgets = self._wizard_render_sam3(parent, sam_present_after)
+
+            def refresh_sam_page():
+                present = sam_present_after()
+                if fully_ready:
+                    setup_btn.set_text(setup_label + (" ✓" if self.plan.has(setup_remove_key) else ""))
+                else:
+                    setup_btn.set_text(setup_label + (" ✓" if self.plan.has(setup_install_key) else ""))
+                if present:
+                    gate_note.pack_forget()
+                else:
+                    gate_note.pack(fill="x", pady=(4, 12))
+                for btn, spec, installed in model_widgets:
+                    if installed:
+                        q = self.plan.has(f"sam_model:{spec.key}:remove")
+                        btn.set_text("Remove" + (" ✓" if q else ""))
+                    else:
+                        q = self.plan.has(f"sam_model:{spec.key}:install")
+                        btn.set_text("Add to plan" + (" ✓" if q else ""))
+                        btn.set_enabled(present or q)
+                for qbtn in queue_all_buttons:
+                    qbtn.set_enabled(present)
+                sam3_widgets.refresh(present)
+
+            refresh_sam_page()
+
+        # -- SAM 3.1 (gated on Hugging Face) -------------------------------------
+
+        class _Sam3Widgets:
+            """Tiny bundle returned so the SAM page's refresh_sam_page() can
+            update SAM3's enabled state (it depends on sam_present_after(),
+            which the setup card owns) without rebuilding anything."""
+            def __init__(self, refresh_fn):
+                self._refresh_fn = refresh_fn
+
+            def refresh(self, present: bool):
+                self._refresh_fn(present)
+
+        def _wizard_render_sam3(self, parent, sam_present_after):
             spec = MODEL_BY_KEY["sam3"]
             installed = model_installed(spec)
             card = RoundedCard(parent)
@@ -3122,7 +3295,6 @@ if _TK_OK:
             rating_widget(left, spec.quality, spec.speed, bg=CARD_BG).pack(anchor="w", pady=(4, 0))
 
             install_key, remove_key = "sam3:install", "sam3:remove"
-            queued_install = self.plan.has(install_key)
 
             autowrap_label(
                 body, f"Gated on Hugging Face ({SAM3_HF_REPO_ID}) — request access, wait for approval, then "
@@ -3136,14 +3308,17 @@ if _TK_OK:
             RoundedButton(row1, "Request access on Hugging Face", icon="link", variant="secondary", width=270,
                           command=lambda: webbrowser.open(SAM3_HF_PAGE)).pack(side="left")
             transformers_key = "sam3:transformers"
-            t_queued = self.plan.has(transformers_key)
-            RoundedButton(
-                row1, "Install/upgrade transformers" + (" ✓" if t_queued else ""), icon="box", variant="success",
-                width=230,
-                command=lambda: self._wizard_toggle_and_advance(
-                    transformers_key, "Install/upgrade transformers", "install",
-                    lambda job: install_sam3_transformers(job), advance=False),
-            ).pack(side="left", padx=8)
+            transformers_btn = RoundedButton(row1, "Install/upgrade transformers", icon="box", variant="success",
+                                              width=230)
+            transformers_btn.pack(side="left", padx=8)
+
+            def toggle_transformers():
+                self.plan.toggle(PlannedAction(transformers_key, "Install/upgrade transformers", "install",
+                                                lambda job: install_sam3_transformers(job)))
+                transformers_btn.set_text("Install/upgrade transformers"
+                                           + (" ✓" if self.plan.has(transformers_key) else ""))
+
+            transformers_btn.command = toggle_transformers
 
             row2 = tk.Frame(body, bg=CARD_BG)
             row2.pack(fill="x")
@@ -3152,33 +3327,52 @@ if _TK_OK:
             hf_entry.pack(side="left", padx=8, ipady=3)
             flatten_entry(hf_entry)
 
-            if installed:
-                queued_remove = self.plan.has(remove_key)
-                RoundedButton(
-                    row2, "Remove" + (" ✓" if queued_remove else ""), icon="trash", variant="danger", width=130,
-                    command=lambda: self._wizard_toggle_and_advance(
-                        remove_key, "Remove SAM 3.1", "remove", lambda job: remove_sam3(job), advance=False),
-                ).pack(side="left")
-            else:
-                def token_ok():
-                    return queued_install or bool(self.hf_token_var.get().strip())
+            gate_note = callout(body, "Needs the SAM setup above first.", "warn")
 
-                dl_btn = RoundedButton(
-                    row2, "Add to plan" + (" ✓" if queued_install else ""), icon="install", variant="success",
-                    width=140,
-                    command=lambda: self._wizard_toggle_and_advance(
-                        install_key, "Download SAM 3.1", "install", lambda job: self._run_sam3_download(job),
-                        advance=False),
-                    on_blocked=lambda: show_snackbar(self, "Enter a Hugging Face token first", tone="warn"),
-                )
-                dl_btn.pack(side="left", padx=(0, 8))
-                dl_btn.set_enabled(enabled and token_ok())
-                trace_id = self.hf_token_var.trace_add(
-                    "write", lambda *_a: dl_btn.set_enabled(enabled and token_ok()))
-                dl_btn.bind("<Destroy>", lambda _e, tid=trace_id: self.hf_token_var.trace_remove("write", tid))
-            if not enabled:
-                callout(body, "Needs the plug-in and the Python backend above first.", "warn")
+            if installed:
+                sam3_btn = RoundedButton(row2, "Remove", icon="trash", variant="danger", width=130)
+                sam3_btn.pack(side="left")
+
+                def toggle_sam3():
+                    self.plan.toggle(PlannedAction(remove_key, "Remove SAM 3.1", "remove",
+                                                    lambda job: remove_sam3(job)))
+                    sam3_btn.set_text("Remove" + (" ✓" if self.plan.has(remove_key) else ""))
+
+                sam3_btn.command = toggle_sam3
+                gate_note.pack_forget()
+
+                def refresh(_present: bool):
+                    pass
+            else:
+                sam3_btn = RoundedButton(
+                    row2, "Add to plan", icon="install", variant="success", width=140,
+                    on_blocked=lambda: show_snackbar(self, "Enter a Hugging Face token first", tone="warn"))
+                sam3_btn.pack(side="left")
+
+                def token_entered() -> bool:
+                    return bool(self.hf_token_var.get().strip())
+
+                def toggle_sam3():
+                    self.plan.toggle(PlannedAction(install_key, "Download SAM 3.1", "install",
+                                                    lambda job: self._run_sam3_download(job)))
+                    sam3_btn.set_text("Add to plan" + (" ✓" if self.plan.has(install_key) else ""))
+
+                sam3_btn.command = toggle_sam3
+
+                def refresh(present: bool):
+                    queued = self.plan.has(install_key)
+                    sam3_btn.set_enabled(present and (queued or token_entered()))
+                    if present:
+                        gate_note.pack_forget()
+                    else:
+                        gate_note.pack(fill="x", pady=(4, 12))
+
+                trace_id = self.hf_token_var.trace_add("write", lambda *_a: refresh(sam_present_after()))
+                sam3_btn.bind("<Destroy>", lambda _e, tid=trace_id: self.hf_token_var.trace_remove("write", tid))
+
+            refresh(sam_present_after())
             card.finalize()
+            return self._Sam3Widgets(refresh)
 
         def _run_sam3_download(self, job: Job):
             token = self.hf_token_var.get().strip()
@@ -3301,12 +3495,18 @@ if _TK_OK:
             self.exec_progress_bar.pack(anchor="w", fill="x")
             self.exec_progress_bar.set_fraction(self.exec_done / self.exec_total if self.exec_total else 1.0)
 
-            log_card = RoundedCard(content, pad=12)
-            log_card.pack(fill="both", expand=True, pady=(16, 0))
-            text_frame = tk.Frame(log_card.body, bg=CARD_BG)
-            text_frame.pack(fill="both", expand=True)
+            # A RoundedCard sizes itself to its content's *requested* height,
+            # which would cap this panel at a fixed number of text lines no
+            # matter how much room the window actually has — so the log gets
+            # a plain bordered Frame instead, which correctly stretches to
+            # fill whatever vertical space is left (fill="both", expand=True
+            # all the way down this chain).
+            log_frame = tk.Frame(content, bg=CARD_BG, highlightbackground=CARD_BORDER, highlightthickness=1)
+            log_frame.pack(fill="both", expand=True, pady=(16, 0))
+            text_frame = tk.Frame(log_frame, bg=CARD_BG)
+            text_frame.pack(fill="both", expand=True, padx=10, pady=10)
             self.exec_log_text = tk.Text(text_frame, bg="#101114", fg=TEXT, insertbackground=TEXT, relief="flat",
-                                          wrap="word", font=("Monospace", 9), height=16, state="disabled")
+                                          wrap="word", font=("Monospace", 10), padx=8, pady=6, state="disabled")
             sb = ttk.Scrollbar(text_frame, orient="vertical", command=self.exec_log_text.yview,
                                 style="Modern.Vertical.TScrollbar")
             self.exec_log_text.configure(yscrollcommand=sb.set)
@@ -3314,7 +3514,6 @@ if _TK_OK:
             sb.pack(side="right", fill="y")
             for line in self._exec_log_lines:
                 self._append_exec_log(line)
-            log_card.finalize()
 
             btn_row = tk.Frame(content, bg=BG)
             btn_row.pack(fill="x", pady=(16, 0))
@@ -3592,6 +3791,10 @@ def _self_destruct_if_ephemeral():
         path = os.path.abspath(__file__)
         if os.path.isfile(path):
             os.remove(path)
+            # Remove __pycache__ directory next to lazygimp.py
+            pycache_dir = os.path.join(os.path.dirname(path), "__pycache__")
+            if os.path.isdir(pycache_dir):
+                shutil.rmtree(pycache_dir, ignore_errors=True)
     except (NameError, OSError):
         pass
 

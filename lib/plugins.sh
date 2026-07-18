@@ -86,7 +86,16 @@ plugins::install_zip() { # <plugin-folder-name> <url> <kind>
 
 # Batcher — batch image processing / export layers for GIMP 3 (BSD-3-Clause).
 plugins::install_batcher() { # <kind>
-  local url="https://github.com/${BATCHER_REPO}/releases/download/${BATCHER_RELEASE_TAG}/batcher-${BATCHER_RELEASE_TAG}.zip"
+  local tag="" url
+  if have python3; then
+    tag="$(fetch "https://api.github.com/repos/${BATCHER_REPO}/releases/latest" 2>/dev/null |
+      python3 -c 'import sys, json; print(json.load(sys.stdin).get("tag_name", ""))' 2>/dev/null)"
+  fi
+  if [[ -z "$tag" ]]; then
+    tag="${BATCHER_RELEASE_TAG}"
+  fi
+  log::info "using Batcher release: ${tag}"
+  url="https://github.com/${BATCHER_REPO}/releases/download/${tag}/batcher-${tag}.zip"
   plugins::install_zip batcher "$url" "$1"
   log::info "restart GIMP, then look for 'Export Layers…' and 'Batch Convert…' under File"
 }
