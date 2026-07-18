@@ -2,6 +2,11 @@
 node_modules/
 dist/
 
+# lazygimp.py (GUI installer) byte-compiles itself and its imported
+# gimpsam_installer module when run locally
+__pycache__/
+*.pyc
+
 # editors / OS noise
 .idea/
 .vscode/

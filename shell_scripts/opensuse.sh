@@ -9,8 +9,10 @@
 # ---------------------------------------------------------------------------
 
 lazygimp::install_packages() {
+  local pkgs=(gimp)
+  [[ "${LAZYGIMP_SKIP_GMIC:-0}" == 1 ]] || pkgs+=(gmic-gimp)
   as_root zypper --non-interactive refresh
-  as_root zypper --non-interactive install gimp gmic-gimp
+  as_root zypper --non-interactive install "${pkgs[@]}"
 }
 
 lazygimp::remove_packages() {

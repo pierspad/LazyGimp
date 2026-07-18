@@ -50,6 +50,7 @@ Options:
   --skip-photogimp        do not apply the PhotoGIMP configuration layer
   --skip-plugins          do not install the plug-ins (Batcher, SAM)
   --no-sam                install Batcher but skip Segment Anything (~1 GB)
+  --skip-gmic             do not install the G'MIC plug-in package
   --uninstall-photogimp   remove the PhotoGIMP layer (personal files are kept)
   -h, --help              show this help
 
@@ -63,11 +64,13 @@ EOF
 SKIP_PHOTOGIMP="${LAZYGIMP_SKIP_PHOTOGIMP:-0}"
 SKIP_PLUGINS="${LAZYGIMP_SKIP_PLUGINS:-0}"
 NO_SAM="${LAZYGIMP_NO_SAM:-0}"
+export LAZYGIMP_SKIP_GMIC="${LAZYGIMP_SKIP_GMIC:-0}"
 while (($#)); do
   case "$1" in
     --skip-photogimp) SKIP_PHOTOGIMP=1 ;;
     --skip-plugins) SKIP_PLUGINS=1 ;;
     --no-sam) NO_SAM=1 ;;
+    --skip-gmic) export LAZYGIMP_SKIP_GMIC=1 ;;
     --uninstall-photogimp)
       photogimp::uninstall native
       exit 0
