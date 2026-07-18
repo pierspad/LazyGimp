@@ -139,9 +139,18 @@ lazygimp/            the actual package
   plugins.py         plug-in folders (Batcher, seganyplugin)
   sam_backend.py     SAM venv + PyTorch backend
   sam3.py            SAM 3.1 (gated on Hugging Face)
-  gui.py             the Tkinter app (optional — needs python3-tk)
+  gui/               the Tkinter app (optional — needs python3-tk)
+    theme.py         design tokens: every color, font and ttk style
+    icons.py         vector icons (Pillow-antialiased when available)
+    helpers.py       drawing/layout primitives
+    widgets.py       canvas widgets, incremental rendering (no full redraws)
+    dialogs.py       themed dialogs, snackbar, sudo password prompt
+    state.py         "what's installed" for the uninstall screen
+    app.py           LazyGimpApp: plumbing + page-mixin composition
+    pages/           one module per screen (landing/uninstall/wizard/progress)
   cli.py             argparse commands + main()
-tests/               stdlib-only smoke tests (run: python3 -m unittest discover -s tests)
+tests/               stdlib-only smoke tests (python3 -m unittest discover -s tests)
+                     + tests/gui_smoke.py (real GUI under Xvfb, run by CI)
 scripts/             release asset build (zipapp + PyInstaller + zip)
 windows/             Windows installer script
 ```

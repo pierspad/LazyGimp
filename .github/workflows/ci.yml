@@ -2,6 +2,8 @@
 # CI — every pull request (and push to main/dev) must pass:
 #   * ruff (lint) on the lazygimp package
 #   * unit/smoke tests on every supported Python (GUI import, CLI, registry)
+#   * a GUI smoke test that opens the real Tk app under Xvfb and walks
+#     every screen (the only place rendering regressions can be caught)
 #   * a real build of the release assets (zipapp + PyInstaller binary)
 #   * actionlint on the workflows themselves
 #   * PSScriptAnalyzer on the Windows installer
@@ -51,6 +53,22 @@ jobs:
 
       - name: Byte-compile everything
         run: python -m compileall -q lazygimp lazygimp.py
+
+  gui-smoke:
+    name: GUI smoke (Tk under Xvfb)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Tk + Xvfb
+        run: sudo apt-get update -q && sudo apt-get install -y python3-tk xvfb
+
+      - name: Open the real GUI and walk every screen
+        run: xvfb-run -a python tests/gui_smoke.py
 
   build:
     name: Build release assets (dry run)
