@@ -1,3 +1,9 @@
+## [1.2.0-dev.5](https://github.com/pierspad/LazyGimp/compare/v1.2.0-dev.4...v1.2.0-dev.5) (2026-07-18)
+
+### ✨ Features
+
+* **gui:** improve installer aesthetics, add custom vector icons and automate SAM setup ([97bae73](https://github.com/pierspad/LazyGimp/commit/97bae734d34da76c201a5a28cae2b02d85ab06a1))
+
 ## [1.2.0-dev.4](https://github.com/pierspad/LazyGimp/compare/v1.2.0-dev.3...v1.2.0-dev.4) (2026-07-18)
 
 ### ✨ Features
