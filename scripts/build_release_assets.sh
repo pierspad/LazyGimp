@@ -33,8 +33,23 @@ mkdir -p "$DIST"
 BUNDLE="${STAGE}/lazygimp"
 mkdir -p "$BUNDLE"
 cp -a "${ROOT}/lazygimp" "${ROOT}/installer.py" "$BUNDLE/"
-cp -a "${ROOT}/docs/README.md" "${ROOT}/docs/LICENSE" "$BUNDLE/" 2>/dev/null ||
-  cp -a "${ROOT}/README.md" "${ROOT}/LICENSE" "$BUNDLE/"
+
+# Docs may live in docs/ or at the repo root — take each from wherever it is.
+copy_first() { # <dest-name> <candidate>...
+  local dest="$1" candidate
+  shift
+  for candidate in "$@"; do
+    if [[ -e "${ROOT}/${candidate}" ]]; then
+      cp -a "${ROOT}/${candidate}" "${BUNDLE}/${dest}"
+      return 0
+    fi
+  done
+  echo "error: none of the candidates for '${dest}' exist: $*" >&2
+  exit 1
+}
+copy_first README.md docs/README.md README.md
+copy_first LICENSE docs/LICENSE LICENSE
+
 find "$BUNDLE" -name '__pycache__' -type d -exec rm -rf {} +
 
 sed -i "s/^__version__ = .*/__version__ = \"${VERSION}\"/" \
