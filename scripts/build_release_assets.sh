@@ -16,8 +16,15 @@
 # Invoked by semantic-release (@semantic-release/exec, see .releaserc) and
 # by the CI dry run. Requires: python3 (+python3-tk for a useful binary),
 # pyinstaller, zip.
+#
+# STAGE_ONLY=1 skips the PyInstaller step (the slow one): everything else —
+# staging, version stamping, zipapp, source zips — still runs, which is
+# exactly the part that can break on file moves. The pre-push git hook uses
+# this to catch "cannot stat" style failures before CI does.
 # ---------------------------------------------------------------------------
 set -euo pipefail
+
+STAGE_ONLY="${STAGE_ONLY:-0}"
 
 VERSION="${1:?usage: build_release_assets.sh <version>}"
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." >/dev/null 2>&1 && pwd)"
@@ -69,7 +76,7 @@ chmod +x "${DIST}/lazygimp.pyz"
 # --- 2. PyInstaller: self-contained Linux binary ---------------------------
 # customtkinter (pure python + json/font assets) and Pillow ship inside the
 # binary, so the downloaded file needs nothing at all on the host system.
-pyinstaller --onefile --clean --noconfirm \
+[[ "$STAGE_ONLY" == "1" ]] || pyinstaller --onefile --clean --noconfirm \
   --name "lazygimp-linux-x86_64" \
   --distpath "$DIST" \
   --workpath "${STAGE}/pyi-build" \
