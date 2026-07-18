@@ -1,3 +1,9 @@
+## [1.2.0-dev.2](https://github.com/pierspad/LazyGimp/compare/v1.2.0-dev.1...v1.2.0-dev.2) (2026-07-18)
+
+### 🐛 Bug Fixes
+
+* **release:** honor BREAKING CHANGE over the custom release rules ([a538385](https://github.com/pierspad/LazyGimp/commit/a538385e4b6d1bcc2dea8b8ce9f9c7053b55568a))
+
 ## [1.2.0-dev.1](https://github.com/pierspad/LazyGimp/compare/v1.1.2...v1.2.0-dev.1) (2026-07-18)
 
 ### ⚠ BREAKING CHANGES
