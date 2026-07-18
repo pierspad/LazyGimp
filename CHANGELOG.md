@@ -1,3 +1,9 @@
+## [1.2.0-dev.7](https://github.com/pierspad/LazyGimp/compare/v1.2.0-dev.6...v1.2.0-dev.7) (2026-07-18)
+
+### ✨ Features
+
+* **gui:** implement 4x scroll speed, expand viewport, make SAM cards clickable and center proceed button ([18ad489](https://github.com/pierspad/LazyGimp/commit/18ad4893635e077b9ad2895a807ba8bd2f14c51c))
+
 ## [1.2.0-dev.6](https://github.com/pierspad/LazyGimp/compare/v1.2.0-dev.5...v1.2.0-dev.6) (2026-07-18)
 
 ### ✨ Features
