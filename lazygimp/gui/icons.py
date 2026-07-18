@@ -7,7 +7,7 @@ dependency beyond Tkinter itself."""
 from __future__ import annotations
 
 from ..compat import Image, ImageDraw, ImageTk, _PIL_OK, tk
-from .theme import SUCCESS, TEXT, WARNING
+from .theme import TEXT, WARNING
 import math
 
 

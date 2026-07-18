@@ -5,7 +5,7 @@ self.plan; nothing here touches disk."""
 from __future__ import annotations
 
 from ...compat import ctk, tk
-from ...constants import APPIMAGE_DIR, GMIC_DOWNLOAD_PAGE, SAM3_HF_PAGE, SAM3_HF_REPO_ID, TORCH_INDEX_URLS, VENV_DIR
+from ...constants import GMIC_DOWNLOAD_PAGE, SAM3_HF_PAGE, SAM3_HF_REPO_ID, TORCH_INDEX_URLS
 from ...distro import detect_distro
 from ...gimp_detect import find_gimp_binary, find_gimp_command
 from ...gimp_install import appimage_present, gimp_native_installed, gmic_available_on_this_release, gmic_installed, install_gimp_appimage, install_gimp_package_manager, install_gmic_only, remove_gmic_only
@@ -20,7 +20,7 @@ from ...sam_backend import backend_ready, install_sam3_transformers, install_sam
 from ..dialogs import show_snackbar, themed_confirm, themed_info
 from ..helpers import autowrap_label, rating_widget
 from ..icons import icon_canvas
-from ..theme import ACCENT, BG, CARD_BG, CARD_BORDER, DANGER, F_BODY, F_BODY_B, F_H3, F_ITEM_TITLE, F_SECTION, F_SMALL, F_SMALL_B, FIELD_BG, SECONDARY_HOVER, SUCCESS, TEXT, TEXT_MUTED, F_CARD_TITLE, WARNING
+from ..theme import ACCENT, BG, CARD_BG, CARD_BORDER, DANGER, DISABLED_BG, DISABLED_TEXT, F_BODY, F_BODY_B, F_H3, F_ITEM_TITLE, F_SECTION, F_SMALL, F_SMALL_B, FIELD_BG, SECONDARY_HOVER, SUCCESS, TEXT, TEXT_MUTED, F_CARD_TITLE, WARNING
 from ..widgets import RoundedButton, RoundedCard, ScrollableFrame, bind_click_recursive, callout
 from typing import Optional
 import os
@@ -673,10 +673,6 @@ class WizardPages:
         return run
 
     def _wizard_render_sam(self, parent):
-        plugin_ok = segany_plugin_installed()
-        ready = backend_ready()
-        exists = venv_exists()
-        fully_ready = plugin_ok and ready
         setup_install_key = "sam_setup:install"
 
         model_widgets: list[tuple] = []       # (button, spec, installed)
