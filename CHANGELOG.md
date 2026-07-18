@@ -1,3 +1,9 @@
+## [1.2.0-dev.6](https://github.com/pierspad/LazyGimp/compare/v1.2.0-dev.5...v1.2.0-dev.6) (2026-07-18)
+
+### ✨ Features
+
+* **gui:** keep headers/footers static during transition, add gimp icon, improve dialog corners and review list layout ([adfaa5b](https://github.com/pierspad/LazyGimp/commit/adfaa5bd1003180c9d3af832796af6da07b8c9c6))
+
 ## [1.2.0-dev.5](https://github.com/pierspad/LazyGimp/compare/v1.2.0-dev.4...v1.2.0-dev.5) (2026-07-18)
 
 ### ✨ Features
