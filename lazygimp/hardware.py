@@ -69,5 +69,5 @@ def recommended_torch_index(hw: Hardware) -> str:
         if "NVIDIA" in hw.gpu["vendor"]:
             return TORCH_INDEX_URLS["NVIDIA CUDA 12.8"]
         if "AMD" in hw.gpu["vendor"]:
-            return TORCH_INDEX_URLS["AMD ROCm 6.2"]
+            return TORCH_INDEX_URLS["AMD ROCm 7.2 (latest)"]
     return TORCH_INDEX_URLS["CPU (universal, smaller download)"]

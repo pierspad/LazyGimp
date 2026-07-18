@@ -62,7 +62,7 @@ def show_snackbar(app, message: str, tone: str = "warn", duration_ms: int = 2200
     card.pack()
     row = tk.Frame(card.body, bg=bgc)
     row.pack()
-    icon_canvas(row, "warn" if tone == "warn" else ("x" if tone == "error" else "check"), color=fg, size=16,
+    icon_canvas(row, "warn" if tone == "warn" else ("x" if tone == "error" else "check"), color=fg, size=18,
                 bg=bgc).pack(side="left", padx=(0, 8))
     tk.Label(row, text=message, bg=bgc, fg=fg, font=F_BODY_B).pack(side="left")
     card.finalize()

@@ -134,7 +134,7 @@ def _paint_icon(p: _Painter, cx, cy, kind, color, s, frame=0):
 
 _ICON_PHOTO_CACHE: dict = {}
 
-def render_icon_photo(kind, color, size=18, frame=0):
+def render_icon_photo(kind, color, size=20, frame=0):
     if not _PIL_OK:
         return None
     key = (kind, color, size, frame)
@@ -152,14 +152,14 @@ def render_icon_photo(kind, color, size=18, frame=0):
 def draw_icon(canvas, cx, cy, kind, color=TEXT, s=7, frame=0):
     _paint_icon(_Painter(canvas, pil=False), cx, cy, kind, color, s, frame)
 
-def blit_icon(canvas, cx, cy, kind, color=TEXT, size=18, frame=0):
+def blit_icon(canvas, cx, cy, kind, color=TEXT, size=20, frame=0):
     photo = render_icon_photo(kind, color, size, frame)
     if photo is not None:
         canvas.create_image(cx, cy, image=photo)
     else:
         draw_icon(canvas, cx, cy, kind, color=color, s=size * 0.42, frame=frame)
 
-def icon_canvas(parent, kind, color=TEXT, size=18, bg=None):
+def icon_canvas(parent, kind, color=TEXT, size=20, bg=None):
     c = tk.Canvas(parent, width=size, height=size, highlightthickness=0, bd=0, bg=bg or parent["bg"])
     blit_icon(c, size / 2, size / 2, kind, color=color, size=size)
     return c

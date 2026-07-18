@@ -8,7 +8,7 @@
 #   lazygimp-linux-x86_64       PyInstaller binary — zero dependencies,
 #                               Linux x86_64 only
 #   lazygimp-src.zip            the source folder (lazygimp/ package +
-#                               lazygimp.py launcher) — unzip and run
+#                               installer.py launcher) — unzip and run
 #   lazygimp-<version>-src.zip  the same zip, versioned
 #   windows-install.ps1         Windows installer script
 #   checksums.txt               SHA-256 of every asset
@@ -32,7 +32,7 @@ mkdir -p "$DIST"
 # --- stage the source tree, stamped with the release version ---------------
 BUNDLE="${STAGE}/lazygimp"
 mkdir -p "$BUNDLE"
-cp -a "${ROOT}/lazygimp" "${ROOT}/lazygimp.py" "$BUNDLE/"
+cp -a "${ROOT}/lazygimp" "${ROOT}/installer.py" "$BUNDLE/"
 cp -a "${ROOT}/docs/README.md" "${ROOT}/docs/LICENSE" "$BUNDLE/" 2>/dev/null ||
   cp -a "${ROOT}/README.md" "${ROOT}/LICENSE" "$BUNDLE/"
 find "$BUNDLE" -name '__pycache__' -type d -exec rm -rf {} +
@@ -63,7 +63,7 @@ pyinstaller --onefile --clean --noconfirm \
   --hidden-import tkinter \
   --collect-all customtkinter \
   --collect-submodules PIL \
-  "${BUNDLE}/lazygimp.py"
+  "${BUNDLE}/installer.py"
 
 # --- 3. source zip: the folder with everything needed to run ---------------
 (cd "$STAGE" && zip -qr "${DIST}/lazygimp-src.zip" lazygimp \

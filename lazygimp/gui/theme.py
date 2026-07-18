@@ -41,20 +41,24 @@ TONE_COLORS = {
 
 # --- fonts -----------------------------------------------------------------
 FONT_FAMILY = "Sans"
-F_HERO = (FONT_FAMILY, 28, "bold")          # landing title
-F_H1 = (FONT_FAMILY, 20, "bold")            # screen titles
-F_H2 = (FONT_FAMILY, 18, "bold")            # page headers
-F_H3 = (FONT_FAMILY, 16, "bold")            # wizard step title
-F_CARD_TITLE = (FONT_FAMILY, 14, "bold")
-F_DIALOG_TITLE = (FONT_FAMILY, 13, "bold")
-F_ITEM_TITLE = (FONT_FAMILY, 12, "bold")
-F_SECTION = (FONT_FAMILY, 11, "bold")
-F_SUBTITLE = (FONT_FAMILY, 11)
-F_BODY_B = (FONT_FAMILY, 10, "bold")
-F_BODY = (FONT_FAMILY, 10)
-F_SMALL_B = (FONT_FAMILY, 9, "bold")
-F_SMALL = (FONT_FAMILY, 9)
+F_HERO = (FONT_FAMILY, 30, "bold")          # landing title
+F_H1 = (FONT_FAMILY, 21, "bold")            # screen titles
+F_H2 = (FONT_FAMILY, 19, "bold")            # page headers
+F_H3 = (FONT_FAMILY, 17, "bold")            # wizard step title
+F_CARD_TITLE = (FONT_FAMILY, 15, "bold")
+F_DIALOG_TITLE = (FONT_FAMILY, 14, "bold")
+F_ITEM_TITLE = (FONT_FAMILY, 13, "bold")
+F_SECTION = (FONT_FAMILY, 12, "bold")
+F_SUBTITLE = (FONT_FAMILY, 12)
+F_BODY_B = (FONT_FAMILY, 11, "bold")
+F_BODY = (FONT_FAMILY, 11)
+F_SMALL_B = (FONT_FAMILY, 10, "bold")
+F_SMALL = (FONT_FAMILY, 10)
 F_MONO = ("Monospace", 10)
+
+# base size for the vector icons; call sites scale from here so the whole
+# icon set can be grown/shrunk in one place
+ICON_SIZE = 20
 
 
 def apply_style(root) -> None:

@@ -13,8 +13,8 @@ from .helpers import autowrap_label
 from .icons import icon_canvas
 from .theme import (
     ACCENT, ACCENT_HOVER, ACCENT_TEXT, BG, CARD_BG, CARD_BORDER, DANGER, DANGER_HOVER,
-    DANGER_TEXT, DISABLED_BG, DISABLED_TEXT, F_BODY_B, F_H2, F_SMALL, SECONDARY_HOVER,
-    SUCCESS, SUCCESS_HOVER, SUCCESS_TEXT, TEXT, TONE_COLORS,
+    DANGER_TEXT, DISABLED_BG, DISABLED_TEXT, F_BODY, F_BODY_B, F_H2, F_SMALL, SECONDARY_HOVER,
+    SUCCESS, SUCCESS_HOVER, SUCCESS_TEXT, TEXT, TEXT_MUTED, TONE_COLORS,
 )
 
 # Text glyphs standing in for the old vector icons inside buttons — safe
@@ -143,12 +143,22 @@ class ProgressBar(ctk.CTkProgressBar):
 
 
 class ModernCheckbox(ctk.CTkCheckBox):
-    def __init__(self, parent, variable, command=None, size=20, bg=None):
-        super().__init__(parent, text="", variable=variable, onvalue=True, offvalue=False,
-                         command=command, width=size, height=size,
+    """With `text`, the label is part of the checkbox: clicking it toggles
+    and hovering anywhere on the row highlights the box — CTk behavior,
+    for free."""
+
+    def __init__(self, parent, variable, command=None, size=22, bg=None,
+                 text="", font=None, text_color=None):
+        kwargs = {}
+        if not text:
+            kwargs["width"] = size
+        super().__init__(parent, text=text, variable=variable, onvalue=True, offvalue=False,
+                         command=command, height=size,
                          checkbox_width=size, checkbox_height=size, corner_radius=6,
                          fg_color=ACCENT, hover_color=ACCENT_HOVER, border_color=CARD_BORDER,
-                         border_width=2, checkmark_color=ACCENT_TEXT)
+                         border_width=2, checkmark_color=ACCENT_TEXT,
+                         font=font or F_BODY, text_color=text_color or TEXT_MUTED,
+                         **kwargs)
 
 
 class ScrollableFrame(ctk.CTkScrollableFrame):
@@ -184,7 +194,7 @@ def callout(parent, text, tone="info"):
     card.pack(fill="x", pady=(4, 12))
     row = tk.Frame(card.body, bg=bgc)
     row.pack(fill="x")
-    icon_canvas(row, icon_kind, color=fg, size=18, bg=bgc).pack(side="left", padx=(0, 8), anchor="n")
+    icon_canvas(row, icon_kind, color=fg, size=20, bg=bgc).pack(side="left", padx=(0, 8), anchor="n")
     autowrap_label(row, text, fg=fg, bg=bgc, font=F_SMALL).pack(side="left", fill="x", expand=True)
     card.finalize()
     return card

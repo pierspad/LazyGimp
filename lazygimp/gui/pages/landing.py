@@ -51,7 +51,7 @@ class LandingPage:
         manage.grid(row=0, column=0, padx=10)
         title_row = tk.Frame(manage.body, bg=CARD_BG)
         title_row.pack(anchor="w")
-        icon_canvas(title_row, "gear", color=TEXT, size=20).pack(side="left", padx=(0, 8))
+        icon_canvas(title_row, "gear", color=TEXT, size=22).pack(side="left", padx=(0, 8))
         tk.Label(title_row, text="Manage components", bg=CARD_BG, fg=TEXT, font=F_CARD_TITLE).pack(
             side="left")
         autowrap_label(
@@ -70,7 +70,7 @@ class LandingPage:
         auto.grid(row=0, column=1, padx=10)
         title_row2 = tk.Frame(auto.body, bg=CARD_BG)
         title_row2.pack(anchor="w")
-        icon_canvas(title_row2, "bolt", color=TEXT, size=20).pack(side="left", padx=(0, 8))
+        icon_canvas(title_row2, "bolt", color=TEXT, size=22).pack(side="left", padx=(0, 8))
         tk.Label(title_row2, text="Quick setup", bg=CARD_BG, fg=TEXT, font=F_CARD_TITLE).pack(side="left")
         autowrap_label(
             auto.body,
@@ -86,27 +86,27 @@ class LandingPage:
 
         if anything_installed():
             btn_row = tk.Frame(center, bg=BG)
-            btn_row.pack(pady=(18, 0))
+            btn_row.pack(pady=(24, 0))
             if find_gimp_command():
-                RoundedButton(btn_row, "Close installer and open GIMP", variant="primary", icon="bolt", width=340,
-                              command=self.launch_gimp_and_close).pack(pady=(0, 10))
-            RoundedButton(btn_row, "Uninstall from this system", variant="danger", icon="trash", width=340,
-                          command=self.show_uninstall_confirm).pack()
+                RoundedButton(btn_row, "Close installer and open GIMP", variant="primary", icon="bolt",
+                              width=400, height=46, command=self.launch_gimp_and_close).pack(pady=(0, 14))
+            RoundedButton(btn_row, "Uninstall from this system", variant="danger", icon="trash",
+                          width=400, height=46, command=self.show_uninstall_confirm).pack()
 
         # The installer is disposable by design: this drives the same
         # --ephemeral self-destruction (binary, .pyz or source folder) via
         # the env flag util._self_destruct_if_ephemeral() checks on exit.
-        eph_row = tk.Frame(center, bg=BG)
-        eph_row.pack(pady=(22, 0))
+        # Text is part of the checkbox: the whole row is clickable and
+        # hovers as one.
         self._ephemeral_var = tk.BooleanVar(
             value="--ephemeral" in sys.argv or os.environ.get("LAZYGIMP_INSTALLER_EPHEMERAL") == "1")
 
         def sync_ephemeral():
             os.environ["LAZYGIMP_INSTALLER_EPHEMERAL"] = "1" if self._ephemeral_var.get() else "0"
 
-        ModernCheckbox(eph_row, self._ephemeral_var, command=sync_ephemeral, bg=BG).pack(side="left", padx=(0, 8))
-        tk.Label(eph_row, text="Delete this installer when it closes — leaves the folder clean",
-                 bg=BG, fg=TEXT_MUTED, font=F_SMALL).pack(side="left")
+        ModernCheckbox(center, self._ephemeral_var, command=sync_ephemeral,
+                       text="Delete this installer when it closes — leaves the folder clean",
+                       ).pack(pady=(26, 0))
         sync_ephemeral()
 
     def launch_gimp_and_close(self):

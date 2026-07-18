@@ -17,7 +17,7 @@ One installer, GUI (Tkinter) and CLI, split into small modules:
     gui           the Tkinter app (optional — needs python3-tk)
     cli           argparse commands + main()
 
-Run `python3 lazygimp.py` (checkout), `python3 lazygimp.pyz` (zipapp) or
+Run `python3 installer.py` (checkout), `python3 installer.pyz` (zipapp) or
 the prebuilt binary. No arguments opens the GUI; see `--help` for the CLI.
 """
 __version__ = "0.0.0.dev0"

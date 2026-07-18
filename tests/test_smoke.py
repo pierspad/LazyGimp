@@ -55,7 +55,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 0)
 
     def test_launcher_and_module_entrypoints(self):
-        for cmd in ([sys.executable, str(ROOT / "lazygimp.py"), "--help"],
+        for cmd in ([sys.executable, str(ROOT / "installer.py"), "--help"],
                     [sys.executable, "-m", "lazygimp", "--help"]):
             proc = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)
             self.assertEqual(proc.returncode, 0, proc.stderr)

@@ -32,7 +32,7 @@ jobs:
       - name: ruff
         run: |
           pip install ruff
-          ruff check lazygimp lazygimp.py tests
+          ruff check lazygimp installer.py tests
 
   tests:
     name: Tests (py${{ matrix.python }})
@@ -52,7 +52,7 @@ jobs:
         run: python -m unittest discover -s tests -v
 
       - name: Byte-compile everything
-        run: python -m compileall -q lazygimp lazygimp.py
+        run: python -m compileall -q lazygimp installer.py
 
   gui-smoke:
     name: GUI smoke (Tk under Xvfb)

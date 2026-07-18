@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Thin launcher for a source checkout — the real code lives in lazygimp/.
 
-Kept so the historic `python3 lazygimp.py` invocation keeps working unchanged.
+Run `python3 installer.py` (equivalent: `python3 -m lazygimp`).
 """
 import os
 import sys

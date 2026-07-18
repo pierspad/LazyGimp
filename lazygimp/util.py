@@ -41,7 +41,7 @@ def _install_artifact_paths() -> list[str]:
     Depending on how LazyGimp was launched this is:
       * the PyInstaller binary   (frozen single-file build)
       * the zipapp archive       (lazygimp.pyz)
-      * the source checkout      (lazygimp/ package + lazygimp.py launcher)
+      * the source checkout      (lazygimp/ package + installer.py launcher)
     """
     if getattr(sys, "frozen", False):  # PyInstaller
         return [sys.executable]
@@ -53,9 +53,10 @@ def _install_artifact_paths() -> list[str]:
             probe = os.path.dirname(probe)
         return [probe] if probe else []
     paths = [pkg_dir]
-    launcher = os.path.join(os.path.dirname(pkg_dir), "lazygimp.py")
-    if os.path.isfile(launcher):
-        paths.append(launcher)
+    for name in ("installer.py", "lazygimp.py"):  # current + historic launcher
+        launcher = os.path.join(os.path.dirname(pkg_dir), name)
+        if os.path.isfile(launcher):
+            paths.append(launcher)
     return paths
 
 

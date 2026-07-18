@@ -64,7 +64,7 @@ class LazyGimpApp(LandingPage, UninstallPage, WizardPages, InstallProgressPage):
         if not self._status_spinning or not self.status_spinner.winfo_exists():
             return
         self.status_spinner.delete("all")
-        blit_icon(self.status_spinner, 8, 8, "spinner", color=ACCENT, size=14, frame=self._status_spin_frame % 12)
+        blit_icon(self.status_spinner, 8, 8, "spinner", color=ACCENT, size=16, frame=self._status_spin_frame % 12)
         self._status_spin_frame += 1
         self.root.after(90, self._spin_status)
 

@@ -30,7 +30,7 @@ class UninstallPage:
 
         title_row = tk.Frame(content, bg=BG)
         title_row.pack(anchor="w")
-        icon_canvas(title_row, "trash", color=DANGER, size=24).pack(side="left", padx=(0, 10))
+        icon_canvas(title_row, "trash", color=DANGER, size=26).pack(side="left", padx=(0, 10))
         tk.Label(title_row, text="Uninstall LazyGimp", bg=BG, fg=TEXT, font=F_H1).pack(side="left")
         tk.Label(content, text="Choose what to remove. Personal GIMP files (brushes, scripts, settings not "
                                 "shipped by PhotoGIMP) are never touched — only what LazyGimp itself installed.",
@@ -51,7 +51,7 @@ class UninstallPage:
                 var = tk.BooleanVar(value=True)
                 ModernCheckbox(row, var, command=lambda: update_confirm_label(), bg=CARD_BG).pack(
                     side="left", padx=(0, 10))
-                icon_canvas(row, "trash", color=DANGER, size=18, bg=CARD_BG).pack(side="left", padx=(0, 10))
+                icon_canvas(row, "trash", color=DANGER, size=20, bg=CARD_BG).pack(side="left", padx=(0, 10))
                 col = tk.Frame(row, bg=CARD_BG)
                 col.pack(side="left", fill="x", expand=True)
                 tk.Label(col, text=name, bg=CARD_BG, fg=TEXT, font=F_BODY_B, anchor="w").pack(

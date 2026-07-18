@@ -173,7 +173,7 @@ def cmd_fix_desktop(_args) -> int:
 
 def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        prog="lazygimp.py",
+        prog="installer.py",
         description="GIMP + PhotoGIMP + G'MIC + SAM + Batcher — one standalone installer. "
                      "No subcommand opens the GUI.",
     )

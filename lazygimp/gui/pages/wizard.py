@@ -20,7 +20,7 @@ from ...sam_backend import backend_ready, install_sam3_transformers, install_sam
 from ..dialogs import show_snackbar, themed_confirm, themed_info
 from ..helpers import autowrap_label, rating_widget
 from ..icons import icon_canvas
-from ..theme import ACCENT, BG, CARD_BG, DANGER, F_BODY, F_BODY_B, F_H3, F_ITEM_TITLE, F_SECTION, F_SMALL, F_SMALL_B, SUCCESS, TEXT, TEXT_MUTED
+from ..theme import ACCENT, BG, CARD_BG, CARD_BORDER, DANGER, F_BODY, F_BODY_B, F_H3, F_ITEM_TITLE, F_SECTION, F_SMALL, F_SMALL_B, FIELD_BG, SECONDARY_HOVER, SUCCESS, TEXT, TEXT_MUTED
 from ..widgets import RoundedButton, RoundedCard, ScrollableFrame, bind_click_recursive, callout
 from typing import Optional
 import os
@@ -31,10 +31,8 @@ import webbrowser
 class WizardPages:
     _WIZARD_RENDERERS = {
         "gimp": "_wizard_render_gimp",
-        "photogimp": "_wizard_render_photogimp",
-        "gmic": "_wizard_render_gmic",
+        "components": "_wizard_render_components",
         "sam": "_wizard_render_sam",
-        "batcher": "_wizard_render_batcher",
         "review": "_wizard_render_review",
     }
 
@@ -42,12 +40,12 @@ class WizardPages:
     # straight back to the page that queued them.
     _WIZARD_KEY_PREFIXES = (
         ("gimp_install_", "gimp"),
-        ("photogimp:", "photogimp"),
-        ("gmic:", "gmic"),
+        ("photogimp:", "components"),
+        ("gmic:", "components"),
         ("sam_setup:", "sam"),
         ("sam_model:", "sam"),
         ("sam3:", "sam"),
-        ("batcher:", "batcher"),
+        ("batcher:", "components"),
     )
 
     def show_wizard(self):
@@ -64,10 +62,8 @@ class WizardPages:
         steps = []
         if not (gimp_native_installed() or appimage_present()):
             steps.append(WizardStep("gimp", "GIMP (prerequisite)", prerequisite=True))
-        steps.append(WizardStep("photogimp", "PhotoGIMP"))
-        steps.append(WizardStep("gmic", "G'MIC"))
+        steps.append(WizardStep("components", "PhotoGIMP · G'MIC · Batcher"))
         steps.append(WizardStep("sam", "SAM (segmentation models)"))
-        steps.append(WizardStep("batcher", "Batcher"))
         steps.append(WizardStep("review", "Review & install"))
         return steps
 
@@ -149,9 +145,17 @@ class WizardPages:
                 RoundedButton(nav, "Skip →", variant="secondary", width=110,
                               command=self._wizard_advance).pack(side="right", padx=(0, 8))
 
-        self._wizard_scroller = ScrollableFrame(outer)
-        self._wizard_scroller.pack(fill="both", expand=True, padx=26, pady=(6, 0))
-        self._wizard_body_parent = self._wizard_scroller.inner
+        # Only pages that can outgrow the window get a scroll area — the
+        # others use a plain frame, so there's no scrollbar (and none of
+        # CTkScrollableFrame's canvas plumbing) where nothing scrolls.
+        if step.key in ("sam", "review"):
+            scroller = ScrollableFrame(outer)
+            scroller.pack(fill="both", expand=True, padx=26, pady=(6, 0))
+            self._wizard_body_parent = scroller.inner
+        else:
+            body = tk.Frame(outer, bg=BG)
+            body.pack(fill="both", expand=True, padx=26, pady=(6, 0))
+            self._wizard_body_parent = body
         self._refresh_wizard_body()
 
     def _refresh_wizard_body(self):
@@ -169,7 +173,7 @@ class WizardPages:
     def _status_row(self, body, ok: bool, text: str):
         row = tk.Frame(body, bg=CARD_BG)
         row.pack(fill="x", pady=(0, 10))
-        icon_canvas(row, "check" if ok else "x", color=SUCCESS if ok else TEXT_MUTED, size=16,
+        icon_canvas(row, "check" if ok else "x", color=SUCCESS if ok else TEXT_MUTED, size=18,
                     bg=CARD_BG).pack(side="left", padx=(0, 8))
         autowrap_label(row, text, fg=TEXT, bg=CARD_BG, font=F_BODY).pack(side="left", fill="x",
                                                                                  expand=True)
@@ -260,7 +264,18 @@ class WizardPages:
         self.plan.add(action)
         self._wizard_advance()
 
-    # -- PhotoGIMP ---------------------------------------------------------
+    # -- PhotoGIMP + G'MIC + Batcher, one page -------------------------------
+    # Toggling one of these no longer advances (advance=False): with three
+    # decisions on the same page, jumping away after the first click would
+    # make it impossible to pick more than one thing.
+
+    def _wizard_render_components(self, parent):
+        for title, renderer in (("PhotoGIMP", self._wizard_render_photogimp),
+                                ("G'MIC", self._wizard_render_gmic),
+                                ("Batcher", self._wizard_render_batcher)):
+            tk.Label(parent, text=title, bg=BG, fg=ACCENT, font=F_SECTION).pack(
+                anchor="w", pady=(4, 4))
+            renderer(parent)
 
     def _wizard_render_photogimp(self, parent):
         installed = photogimp_installed()
@@ -281,6 +296,7 @@ class WizardPages:
             install_run=lambda job: install_photogimp(job, gimp_command=(find_gimp_command() or [None])[0]),
             uninstall_run=lambda job: remove_photogimp(job),
             extra=extra,
+            advance=False,
         )
 
     def _repair_photogimp_desktop(self):
@@ -309,6 +325,7 @@ class WizardPages:
             disabled_reason=(None if available else
                               f"No G'MIC package on this distribution release — see {GMIC_DOWNLOAD_PAGE} "
                               "for a manual build."),
+            advance=False,
         )
 
     # -- SAM: one setup action (plug-in + backend) + models + SAM 3.1 -------
@@ -402,8 +419,13 @@ class WizardPages:
             callout(body, "Not set up yet.", "warn")
         tk.Label(body, text="PyTorch build", bg=CARD_BG, fg=TEXT, font=F_BODY_B).pack(
             anchor="w", pady=(8, 6))
-        combo = ctk.CTkComboBox(body, variable=self.torch_choice, values=list(TORCH_INDEX_URLS.keys()),
-                                state="readonly", width=320, font=F_BODY)
+        combo = ctk.CTkComboBox(
+            body, variable=self.torch_choice, values=list(TORCH_INDEX_URLS.keys()),
+            state="readonly", width=340, height=36, corner_radius=10, font=F_BODY,
+            fg_color=FIELD_BG, border_color=CARD_BORDER, border_width=1, text_color=TEXT,
+            button_color=FIELD_BG, button_hover_color=SECONDARY_HOVER,
+            dropdown_fg_color=FIELD_BG, dropdown_hover_color=SECONDARY_HOVER,
+            dropdown_text_color=TEXT, dropdown_font=F_BODY)
         combo.pack(anchor="w", pady=(0, 6))
 
         btn_row = tk.Frame(body, bg=CARD_BG)
@@ -598,7 +620,9 @@ class WizardPages:
         row2 = tk.Frame(body, bg=CARD_BG)
         row2.pack(fill="x")
         tk.Label(row2, text="HF token", bg=CARD_BG, fg=TEXT, font=F_BODY_B).pack(side="left")
-        hf_entry = ctk.CTkEntry(row2, textvariable=self.hf_token_var, show="•", width=280, font=F_BODY)
+        hf_entry = ctk.CTkEntry(row2, textvariable=self.hf_token_var, show="•", width=300, height=36,
+                                corner_radius=10, font=F_BODY, fg_color=FIELD_BG,
+                                border_color=CARD_BORDER, border_width=1, text_color=TEXT)
         hf_entry.pack(side="left", padx=8)
 
         gate_note = callout(body, "Needs the SAM setup above first.", "warn")
@@ -642,7 +666,16 @@ class WizardPages:
                     gate_note.pack(fill="x", pady=(4, 12))
 
             trace_id = self.hf_token_var.trace_add("write", lambda *_a: refresh(sam_present_after()))
-            sam3_btn.bind("<Destroy>", lambda _e, tid=trace_id: self.hf_token_var.trace_remove("write", tid))
+
+            def _drop_token_trace(_e=None, tid=trace_id):
+                # CTk widgets forward bind() to canvas AND label, so this
+                # fires more than once; the var may also already be gone.
+                try:
+                    self.hf_token_var.trace_remove("write", tid)
+                except (tk.TclError, ValueError):
+                    pass
+
+            sam3_btn.bind("<Destroy>", _drop_token_trace)
 
         refresh(sam_present_after())
         card.finalize()
@@ -668,6 +701,7 @@ class WizardPages:
             install_label="Install Batcher",
             install_run=lambda job: install_batcher(job),
             uninstall_run=lambda job: remove_batcher(job),
+            advance=False,
         )
 
     # -- Review & install --------------------------------------------------
@@ -695,7 +729,7 @@ class WizardPages:
             line = tk.Frame(row.body, bg=CARD_BG)
             line.pack(fill="x")
             icon_canvas(line, "trash" if kind == "remove" else "install",
-                        color=DANGER if kind == "remove" else SUCCESS, size=16,
+                        color=DANGER if kind == "remove" else SUCCESS, size=18,
                         bg=CARD_BG).pack(side="left", padx=(0, 10))
             tk.Label(line, text=label, bg=CARD_BG, fg=TEXT, font=F_BODY_B).pack(
                 side="left", fill="x", expand=True)

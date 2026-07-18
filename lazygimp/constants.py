@@ -61,11 +61,21 @@ SAM2_PIP_SPEC = "git+https://github.com/facebookresearch/segment-anything-2.git"
 SAM3_HF_REPO_ID = "facebook/sam3.1"
 SAM3_HF_PAGE = f"https://huggingface.co/{SAM3_HF_REPO_ID}"
 
+# PyTorch wheel indexes offered in the SAM setup. To refresh this list:
+# every entry is a directory under https://download.pytorch.org/whl/ —
+# checking which ones exist is one command:
+#   for i in cpu cu126 cu128 cu130 rocm6.4 rocm7.2; do
+#     curl -so /dev/null -w "$i %{http_code}\n" https://download.pytorch.org/whl/$i/torch/
+#   done
+# (kept as explicit pins so an unattended install can never silently switch
+# to a wheel index that doesn't exist yet for the user's GPU stack)
 TORCH_INDEX_URLS = {
     "CPU (universal, smaller download)": "https://download.pytorch.org/whl/cpu",
     "NVIDIA CUDA 12.6": "https://download.pytorch.org/whl/cu126",
     "NVIDIA CUDA 12.8": "https://download.pytorch.org/whl/cu128",
-    "AMD ROCm 6.2": "https://download.pytorch.org/whl/rocm6.2",
+    "NVIDIA CUDA 13.0": "https://download.pytorch.org/whl/cu130",
+    "AMD ROCm 6.4": "https://download.pytorch.org/whl/rocm6.4",
+    "AMD ROCm 7.2 (latest)": "https://download.pytorch.org/whl/rocm7.2",
 }
 
 
