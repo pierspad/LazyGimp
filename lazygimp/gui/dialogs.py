@@ -14,10 +14,10 @@ def themed_dialog(root, title, message, kind="info"):
     win = tk.Toplevel(root)
     win.overrideredirect(True)
     win.attributes("-topmost", True)
-    win.configure(bg=BG)
+    win.configure(bg=CARD_BG)
     win.transient(root)
     card = RoundedCard(win, radius=18, pad=20, width=380)
-    card.pack(padx=2, pady=2)
+    card.pack(padx=0, pady=0)
     tk.Label(card.body, text=title, bg=CARD_BG, fg=TEXT, font=F_DIALOG_TITLE).pack(anchor="w")
     autowrap_label(card.body, message, fg=TEXT_MUTED, bg=CARD_BG, font=F_BODY).pack(
         anchor="w", fill="x", pady=(10, 18))
@@ -102,10 +102,10 @@ class TkPasswordPrompt:
         win = tk.Toplevel(self.root)
         win.overrideredirect(True)
         win.attributes("-topmost", True)
-        win.configure(bg=BG)
+        win.configure(bg=CARD_BG)
         win.transient(self.root)
         card = RoundedCard(win, radius=18, pad=20, width=420)
-        card.pack(padx=2, pady=2)
+        card.pack(padx=0, pady=0)
         tk.Label(card.body, text="Administrator password", bg=CARD_BG, fg=TEXT,
                  font=F_DIALOG_TITLE).pack(anchor="w")
         autowrap_label(

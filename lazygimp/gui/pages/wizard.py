@@ -130,55 +130,82 @@ class WizardPages:
         self.current_screen = "wizard"
         step = self.wizard_steps[self.wizard_index]
 
-        new_frame = tk.Frame(self.root_frame, bg=BG)
+        # 1. Initialize outer skeleton if needed
+        if not self._current_wizard_frame or not self._current_wizard_frame.winfo_exists():
+            for w in self.root_frame.winfo_children():
+                w.destroy()
+            
+            outer = tk.Frame(self.root_frame, bg=BG)
+            outer.place(relx=0, rely=0, relwidth=1, relheight=1)
+            self._current_wizard_frame = outer
+            
+            self._wizard_header_frame = tk.Frame(outer, bg=BG)
+            self._wizard_header_frame.pack(fill="x", padx=26, pady=(16, 0), side="top")
+            
+            self._wizard_title_label = tk.Label(self._wizard_header_frame, bg=BG, fg=TEXT, font=F_H3)
+            self._wizard_title_label.pack(side="left")
+            
+            self._wizard_step_label = tk.Label(self._wizard_header_frame, bg=BG, fg=TEXT_MUTED, font=F_BODY)
+            self._wizard_step_label.pack(side="right")
+            
+            self._wizard_nav_frame = tk.Frame(outer, bg=BG)
+            self._wizard_nav_frame.pack(fill="x", padx=26, pady=(10, 16), side="bottom")
+            
+            self._wizard_middle_frame = tk.Frame(outer, bg=BG)
+            self._wizard_middle_frame.pack(fill="both", expand=True, side="top")
+            
+            self._active_page_frame = None
 
-        top = tk.Frame(new_frame, bg=BG)
-        top.pack(fill="x", padx=26, pady=(16, 0))
-        tk.Label(top, text=step.title, bg=BG, fg=TEXT, font=F_H3).pack(side="left")
-        tk.Label(top, text=f"Step {self.wizard_index + 1} of {len(self.wizard_steps)}", bg=BG,
-                 fg=TEXT_MUTED, font=F_BODY).pack(side="right")
+        # 2. Update persistent header labels
+        self._wizard_title_label.configure(text=step.title)
+        self._wizard_step_label.configure(text=f"Step {self.wizard_index + 1} of {len(self.wizard_steps)}")
 
-        nav = tk.Frame(new_frame, bg=BG)
-        nav.pack(fill="x", padx=26, pady=(10, 16), side="bottom")
-        RoundedButton(nav, "← Back", variant="secondary", width=110, command=self._wizard_back).pack(
+        # 3. Rebuild navigation buttons inside the fixed bottom nav frame
+        for w in self._wizard_nav_frame.winfo_children():
+            w.destroy()
+            
+        RoundedButton(self._wizard_nav_frame, "← Back", variant="secondary", width=110, command=self._wizard_back).pack(
             side="left")
+            
         self._wizard_next_btn = None
         if step.key != "review":
-            self._wizard_next_btn = RoundedButton(nav, "Next →", variant="primary", width=140,
+            self._wizard_next_btn = RoundedButton(self._wizard_nav_frame, "Next →", variant="primary", width=140,
                                                    command=self._wizard_advance)
             self._wizard_next_btn.pack(side="right")
             self._wizard_next_btn.set_enabled(self._wizard_can_advance())
             if not step.prerequisite:
-                RoundedButton(nav, "Skip →", variant="secondary", width=110,
+                RoundedButton(self._wizard_nav_frame, "Skip →", variant="secondary", width=110,
                                command=self._wizard_advance).pack(side="right", padx=(0, 8))
 
-        # Only pages that can outgrow the window get a scroll area — the
-        # others use a plain frame, so there's no scrollbar (and none of
-        # CTkScrollableFrame's canvas plumbing) where nothing scrolls.
+        # 4. Create the new page frame inside the middle container
+        new_page = tk.Frame(self._wizard_middle_frame, bg=BG)
+
         if step.key in ("sam", "review"):
-            scroller = ScrollableFrame(new_frame)
+            scroller = ScrollableFrame(new_page)
             scroller.pack(fill="both", expand=True, padx=26, pady=(6, 0))
             self._wizard_body_parent = scroller.inner
         else:
-            body = tk.Frame(new_frame, bg=BG)
+            body = tk.Frame(new_page, bg=BG)
             body.pack(fill="both", expand=True, padx=26, pady=(6, 0))
             self._wizard_body_parent = body
+            
         self._refresh_wizard_body()
 
-        old_frame = getattr(self, "_current_wizard_frame", None)
-        if old_frame and old_frame.winfo_exists():
+        # 5. Slide animation inside the middle frame
+        old_page = self._active_page_frame
+        if old_page and old_page.winfo_exists():
             direction = "forward" if self.wizard_index > self._prev_wizard_index else "backward"
-            self._animate_slide(old_frame, new_frame, direction)
+            self._animate_slide(old_page, new_page, direction)
         else:
-            for w in self.root_frame.winfo_children():
-                if w is not new_frame:
+            for w in self._wizard_middle_frame.winfo_children():
+                if w is not new_page:
                     w.destroy()
-            new_frame.place(relx=0, rely=0, relwidth=1, relheight=1)
-            self._current_wizard_frame = new_frame
+            new_page.place(relx=0, rely=0, relwidth=1, relheight=1)
+            self._active_page_frame = new_page
 
         self._prev_wizard_index = self.wizard_index
 
-    def _animate_slide(self, old_frame, new_frame, direction):
+    def _animate_slide(self, old_page, new_page, direction):
         self._wizard_animating = True
         steps = 15
         interval = 12
@@ -188,14 +215,14 @@ class WizardPages:
         else:
             start_y_new = -1.0
             
-        new_frame.place(relx=0, rely=start_y_new, relwidth=1, relheight=1)
-        new_frame.lift()
+        new_page.place(relx=0, rely=start_y_new, relwidth=1, relheight=1)
+        new_page.lift()
         
         def ease_out(t):
             return 1.0 - (1.0 - t) * (1.0 - t)
 
         def step(i):
-            if not self.root.winfo_exists() or not old_frame.winfo_exists() or not new_frame.winfo_exists():
+            if not self.root.winfo_exists() or not old_page.winfo_exists() or not new_page.winfo_exists():
                 self._wizard_animating = False
                 return
                 
@@ -209,15 +236,15 @@ class WizardPages:
                 curr_y_old = progress
                 curr_y_new = -1.0 + progress
                 
-            old_frame.place(relx=0, rely=curr_y_old, relwidth=1, relheight=1)
-            new_frame.place(relx=0, rely=curr_y_new, relwidth=1, relheight=1)
+            old_page.place(relx=0, rely=curr_y_old, relwidth=1, relheight=1)
+            new_page.place(relx=0, rely=curr_y_new, relwidth=1, relheight=1)
             
             if i < steps:
                 self.root.after(interval, lambda: step(i + 1))
             else:
-                old_frame.destroy()
-                new_frame.place(relx=0, rely=0, relwidth=1, relheight=1)
-                self._current_wizard_frame = new_frame
+                old_page.destroy()
+                new_page.place(relx=0, rely=0, relwidth=1, relheight=1)
+                self._active_page_frame = new_page
                 self._wizard_animating = False
                 
         step(1)
@@ -963,14 +990,35 @@ class WizardPages:
             row.pack(fill="x", pady=5)
             line = tk.Frame(row.body, bg=CARD_BG)
             line.pack(fill="x")
-            icon_canvas(line, "trash" if kind == "remove" else "install",
-                        color=DANGER if kind == "remove" else SUCCESS, size=18,
-                        bg=CARD_BG).pack(side="left", padx=(0, 10))
-            tk.Label(line, text=label, bg=CARD_BG, fg=TEXT, font=F_BODY_B).pack(
-                side="left", fill="x", expand=True)
-            trash_btn = RoundedButton(line, "", icon="trash", variant="secondary", width=40,
+            
+            # Map item keys to their specific vector icons for the left side
+            left_icon = "box"
+            first_key = keys[0] if keys else ""
+            if step_key == "gimp" or "gimp_install" in first_key:
+                left_icon = "gimp"
+            elif "photogimp" in first_key:
+                left_icon = "photogimp"
+            elif "gmic" in first_key:
+                left_icon = "gmic"
+            elif "batcher" in first_key:
+                left_icon = "batcher"
+            elif "sam" in first_key:
+                left_icon = "bolt"
+                
+            icon_canvas(line, left_icon, color=ACCENT, size=24, bg=CARD_BG).pack(side="left", padx=(0, 12))
+            
+            lbl = tk.Label(line, text=label, bg=CARD_BG, fg=TEXT, font=F_BODY_B, anchor="w")
+            lbl.pack(side="left", fill="x", expand=True)
+            
+            # Status icon just before the trash button
+            status_icon = "check" if kind == "install" else "trash"
+            status_color = SUCCESS if kind == "install" else DANGER
+            icon_canvas(line, status_icon, color=status_color, size=20, bg=CARD_BG).pack(side="left", padx=10)
+            
+            trash_btn = RoundedButton(line, "", icon="trash", variant="danger", width=40,
                                        command=lambda: self._wizard_discard_many(keys))
             trash_btn.pack(side="right")
+            
             row.finalize()
             bind_click_recursive(row, lambda sk=step_key: self._wizard_jump_to_step(sk), skip=(trash_btn,))
 

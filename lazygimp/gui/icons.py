@@ -83,7 +83,16 @@ def _paint_icon(p: _Painter, cx, cy, kind, color, s, frame=0):
             cx, cy - s * 0.3,
             cx + s * 0.2, cy + s * 0.3
         ], outline=color, width=w)
-        p.line([cx - s * 0.1, cy + s * 0.1, cx + s * 0.1, cy + s * 0.1], color, width=w)
+    elif kind == "gimp":
+        p.polygon([cx - s * 0.5, cy - s * 0.3, cx - s * 0.7, cy - s * 0.7, cx - s * 0.2, cy - s * 0.4], outline=color, width=w)
+        p.polygon([cx + s * 0.2, cy - s * 0.4, cx + s * 0.7, cy - s * 0.7, cx + s * 0.5, cy - s * 0.3], outline=color, width=w)
+        p.oval(cx - s * 0.6, cy - s * 0.4, cx + s * 0.6, cy + s * 0.5, outline=color, width=w)
+        p.oval(cx - s * 0.85, cy - s * 0.1, cx - s * 0.5, cy + s * 0.25, color=color)
+        p.oval(cx - s * 0.35, cy - s * 0.3, cx + s * 0.05, cy + s * 0.1, outline=color, width=w)
+        p.oval(cx - s * 0.05, cy - s * 0.3, cx + s * 0.35, cy + s * 0.1, outline=color, width=w)
+        p.oval(cx - s * 0.22, cy - s * 0.18, cx - s * 0.08, cy - s * 0.04, color=color)
+        p.oval(cx + s * 0.08, cy - s * 0.18, cx + s * 0.22, cy - s * 0.04, color=color)
+        p.arc(cx - s * 0.3, cy + s * 0.05, cx + s * 0.4, cy + s * 0.4, 200, 120, color, width=w)
     elif kind == "photogimp":
         p.polygon([cx - s * 0.5, cy - s * 0.3, cx - s * 0.7, cy - s * 0.7, cx - s * 0.2, cy - s * 0.4], outline=color, width=w)
         p.polygon([cx + s * 0.2, cy - s * 0.4, cx + s * 0.7, cy - s * 0.7, cx + s * 0.5, cy - s * 0.3], outline=color, width=w)
