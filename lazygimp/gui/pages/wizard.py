@@ -61,7 +61,10 @@ class WizardPages:
         self._wizard_animating = False
         self._wizard_cards = {}
         self._review_rows_discard_commands = []
+        self._wizard_page_cache = {}
+        self._component_card_refreshers = []
         self._render_wizard_step()
+        self.root.after(100, self._pre_render_hidden_pages)
 
     def _build_wizard_steps(self) -> list[WizardStep]:
         steps = []
@@ -179,19 +182,41 @@ class WizardPages:
                 RoundedButton(self._wizard_nav_frame, "Skip →", variant="secondary", width=110,
                                command=self._wizard_advance).pack(side="right", padx=(0, 8))
 
-        # 4. Create the new page frame inside the middle container
-        new_page = tk.Frame(self._wizard_middle_frame, bg=BG)
+        # 4. Get or create the page frame from cache
+        if not hasattr(self, "_wizard_page_cache"):
+            self._wizard_page_cache = {}
 
-        if step.key in ("sam", "review"):
-            scroller = ScrollableFrame(new_page)
-            scroller.pack(fill="both", expand=True, padx=(26, 6), pady=(6, 0))
-            self._wizard_body_parent = scroller.inner
+        if step.key not in self._wizard_page_cache:
+            new_page = tk.Frame(self._wizard_middle_frame, bg=BG)
+            if step.key in ("sam", "review"):
+                scroller = ScrollableFrame(new_page)
+                scroller.pack(fill="both", expand=True, padx=(26, 6), pady=(6, 0))
+                body_parent = scroller.inner
+            else:
+                body = tk.Frame(new_page, bg=BG)
+                body.pack(fill="both", expand=True, padx=26, pady=(6, 0))
+                body_parent = body
+            self._wizard_page_cache[step.key] = (new_page, body_parent)
+            self._wizard_body_parent = body_parent
+            self._refresh_wizard_body()
         else:
-            body = tk.Frame(new_page, bg=BG)
-            body.pack(fill="both", expand=True, padx=26, pady=(6, 0))
-            self._wizard_body_parent = body
-            
-        self._refresh_wizard_body()
+            new_page, body_parent = self._wizard_page_cache[step.key]
+            self._wizard_body_parent = body_parent
+
+        # Refresh the page state to match current plan
+        if step.key == "components":
+            for fn in getattr(self, "_component_card_refreshers", []):
+                try:
+                    fn()
+                except Exception:
+                    pass
+        elif step.key == "sam":
+            if hasattr(self, "_refresh_sam_page_fn"):
+                self._refresh_sam_page_fn()
+        elif step.key == "review":
+            for w in body_parent.winfo_children():
+                w.destroy()
+            self._wizard_render_review(body_parent)
 
         # 5. Slide animation inside the middle frame
         old_page = self._active_page_frame
@@ -201,7 +226,16 @@ class WizardPages:
         else:
             for w in self._wizard_middle_frame.winfo_children():
                 if w is not new_page:
-                    w.destroy()
+                    is_cached = False
+                    if hasattr(self, "_wizard_page_cache"):
+                        for cached_page, _ in self._wizard_page_cache.values():
+                            if w == cached_page:
+                                is_cached = True
+                                break
+                    if is_cached:
+                        w.place_forget()
+                    else:
+                        w.destroy()
             new_page.place(relx=0, rely=0, relwidth=1, relheight=1)
             self._active_page_frame = new_page
 
@@ -244,7 +278,16 @@ class WizardPages:
             if i < steps:
                 self.root.after(interval, lambda: step(i + 1))
             else:
-                old_page.destroy()
+                is_cached = False
+                if hasattr(self, "_wizard_page_cache"):
+                    for cached_page, _ in self._wizard_page_cache.values():
+                        if old_page == cached_page:
+                            is_cached = True
+                            break
+                if is_cached:
+                    old_page.place_forget()
+                else:
+                    old_page.destroy()
                 new_page.place(relx=0, rely=0, relwidth=1, relheight=1)
                 self._active_page_frame = new_page
                 self._wizard_animating = False
@@ -262,6 +305,39 @@ class WizardPages:
         getattr(self, self._WIZARD_RENDERERS[step.key])(parent)
         if self._wizard_next_btn is not None and self._wizard_next_btn.winfo_exists():
             self._wizard_next_btn.set_enabled(self._wizard_can_advance())
+
+    def _pre_render_hidden_pages(self):
+        if not hasattr(self, "_wizard_page_cache"):
+            self._wizard_page_cache = {}
+            
+        for step in self.wizard_steps:
+            if step.key not in self._wizard_page_cache:
+                # We can't pre-render review page with widgets, it's dynamic
+                # and built on transition. We can pre-render gimp, components, sam!
+                if step.key == "review":
+                    continue
+                
+                # Check if it needs scroller
+                page_frame = tk.Frame(self._wizard_middle_frame, bg=BG)
+                if step.key in ("sam", "review"):
+                    scroller = ScrollableFrame(page_frame)
+                    scroller.pack(fill="both", expand=True, padx=(26, 6), pady=(6, 0))
+                    body_parent = scroller.inner
+                else:
+                    body = tk.Frame(page_frame, bg=BG)
+                    body.pack(fill="both", expand=True, padx=26, pady=(6, 0))
+                    body_parent = body
+                    
+                self._wizard_page_cache[step.key] = (page_frame, body_parent)
+                
+                # Temporarily point self._wizard_body_parent to body_parent
+                old_body = getattr(self, "_wizard_body_parent", None)
+                self._wizard_body_parent = body_parent
+                
+                getattr(self, self._WIZARD_RENDERERS[step.key])(body_parent)
+                
+                if old_body:
+                    self._wizard_body_parent = old_body
 
     def _status_row(self, body, ok: bool, text: str, icon_kind=None, icon_color=None, bg=CARD_BG):
         row = tk.Frame(body, bg=bg)
@@ -400,6 +476,10 @@ class WizardPages:
             
             # Refresh card color and inner widget backgrounds
             card._update_colors()
+
+        if not hasattr(self, "_component_card_refreshers"):
+            self._component_card_refreshers = []
+        self._component_card_refreshers.append(update_card_ui)
 
         if is_card_enabled:
             card = RoundedCard(parent, bg=card_bg, border=CARD_BORDER, command=on_card_click,
@@ -862,6 +942,7 @@ class WizardPages:
                 qbtn.set_enabled(True)
             sam3_widgets.refresh(True)
 
+        self._refresh_sam_page_fn = refresh_sam_page
         refresh_sam_page()
 
     # -- SAM 3.1 (gated on Hugging Face) -------------------------------------
