@@ -1,3 +1,9 @@
+## [1.2.0-dev.9](https://github.com/pierspad/LazyGimp/compare/v1.2.0-dev.8...v1.2.0-dev.9) (2026-07-18)
+
+### ✨ Features
+
+* **gui:** pre-render wizard pages in memory to eliminate step transition lag ([68f0b48](https://github.com/pierspad/LazyGimp/commit/68f0b486318e011889198bccfc8df1158f004167))
+
 ## [1.2.0-dev.8](https://github.com/pierspad/LazyGimp/compare/v1.2.0-dev.7...v1.2.0-dev.8) (2026-07-18)
 
 ### ✨ Features
