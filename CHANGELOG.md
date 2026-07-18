@@ -1,3 +1,14 @@
+## [1.2.0-dev.4](https://github.com/pierspad/LazyGimp/compare/v1.2.0-dev.3...v1.2.0-dev.4) (2026-07-18)
+
+### ✨ Features
+
+* **gui:** bigger crisper UI, merged components page, installer.py rename ([2325fd0](https://github.com/pierspad/LazyGimp/commit/2325fd0ffe1ac082f79ad995292f26484641e6a7))
+* **gui:** modern CustomTkinter interface + self-deleting installer option ([bc80f6e](https://github.com/pierspad/LazyGimp/commit/bc80f6eba8752ee1907c4607a9d7021740a70292))
+
+### 🐛 Bug Fixes
+
+* **release:** find README/LICENSE wherever they live (docs/ or root) ([ff15124](https://github.com/pierspad/LazyGimp/commit/ff1512472223ba1beb7c18d969636b62627270f9))
+
 ## [1.2.0-dev.3](https://github.com/pierspad/LazyGimp/compare/v1.2.0-dev.2...v1.2.0-dev.3) (2026-07-18)
 
 ### 🐛 Bug Fixes
