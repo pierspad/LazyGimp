@@ -1,3 +1,13 @@
+## [1.2.0-dev.3](https://github.com/pierspad/LazyGimp/compare/v1.2.0-dev.2...v1.2.0-dev.3) (2026-07-18)
+
+### 🐛 Bug Fixes
+
+* **release:** ship release assets under their plain file names ([a6d10b5](https://github.com/pierspad/LazyGimp/commit/a6d10b5b8ca80397766c57574e7b235878b1c9e9))
+
+### ♻️ Refactoring
+
+* **gui:** split the Tk GUI into a modular package with incremental rendering ([78a4674](https://github.com/pierspad/LazyGimp/commit/78a4674e8d169d356a3f805f4e3937b4b94fa22b))
+
 ## [1.2.0-dev.2](https://github.com/pierspad/LazyGimp/compare/v1.2.0-dev.1...v1.2.0-dev.2) (2026-07-18)
 
 ### 🐛 Bug Fixes
