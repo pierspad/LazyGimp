@@ -1,3 +1,9 @@
+## [2.0.0-dev.5](https://github.com/pierspad/LazyGimp/compare/v2.0.0-dev.4...v2.0.0-dev.5) (2026-07-19)
+
+### 🐛 Bug Fixes
+
+* remove unused imports/vars (ruff F401/F841); add explicit --hidden-import for all gimpsam submodules in PyInstaller build; pre-commit hook finds pipx-installed ruff ([dd1e453](https://github.com/pierspad/LazyGimp/commit/dd1e453012a94b2bddaca813dae5be69d261fc6c))
+
 ## [2.0.0-dev.4](https://github.com/pierspad/LazyGimp/compare/v2.0.0-dev.3...v2.0.0-dev.4) (2026-07-19)
 
 ### 🐛 Bug Fixes
