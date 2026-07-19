@@ -18,7 +18,7 @@ from ..dialogs import show_snackbar, themed_info
 from ..helpers import autowrap_label
 from ..icons import icon_canvas
 from ..state import anything_installed
-from ..theme import BG, CARD_BG, F_CARD_TITLE, F_HERO, F_SMALL, F_SUBTITLE, TEXT, TEXT_MUTED
+from ..theme import BG, CARD_BG, F_CARD_TITLE, F_HERO, F_SMALL, F_SUBTITLE, TEXT, TEXT_MUTED, F_ITEM_TITLE
 from ..widgets import ModernCheckbox, RoundedButton, RoundedCard, bind_click_recursive
 import os
 import subprocess
