@@ -1,3 +1,9 @@
+## [2.0.0-dev.2](https://github.com/pierspad/LazyGimp/compare/v2.0.0-dev.1...v2.0.0-dev.2) (2026-07-19)
+
+### 🐛 Bug Fixes
+
+* resolve NameError for F_ITEM_TITLE and fix black overlay bug on Linux ([c4fcd91](https://github.com/pierspad/LazyGimp/commit/c4fcd91fed5577eacebba6437f53a35efcbe9602))
+
 ## [2.0.0-dev.1](https://github.com/pierspad/LazyGimp/compare/v1.2.0-dev.9...v2.0.0-dev.1) (2026-07-19)
 
 ### ⚠ BREAKING CHANGES
