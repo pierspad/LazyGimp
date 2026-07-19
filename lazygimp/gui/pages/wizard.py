@@ -202,12 +202,12 @@ class WizardPages:
         for w in self._wizard_nav_frame.winfo_children():
             w.destroy()
             
-        RoundedButton(self._wizard_nav_frame, "← Back", variant="secondary", width=110, command=self._wizard_back).pack(
+        RoundedButton(self._wizard_nav_frame, "← Back [Backspace]", variant="secondary", width=160, command=self._wizard_back).pack(
             side="left")
             
         self._wizard_next_btn = None
         if step.key != "review":
-            self._wizard_next_btn = RoundedButton(self._wizard_nav_frame, "Next →", variant="primary", width=140,
+            self._wizard_next_btn = RoundedButton(self._wizard_nav_frame, "Next [Enter] →", variant="primary", width=160,
                                                    command=self._wizard_advance)
             self._wizard_next_btn.pack(side="right")
             self._wizard_next_btn.set_enabled(self._wizard_can_advance())
@@ -617,7 +617,7 @@ class WizardPages:
         icon_color = SUCCESS if (native or pm_selected) else TEXT_MUTED
         icon_canvas(body1, distro_icon, color=icon_color, size=64, bg=pm_card_bg).pack(pady=(20, 10))
         
-        tk.Label(body1, text="Package Manager", bg=pm_card_bg, fg=TEXT, font=F_CARD_TITLE).pack(pady=(0, 4))
+        tk.Label(body1, text="Package Manager (1)", bg=pm_card_bg, fg=TEXT, font=F_CARD_TITLE).pack(pady=(0, 4))
         
         distro_name = distro.capitalize() if distro else "Linux"
         tk.Label(body1, text=f"Use system package manager ({distro_name})", bg=pm_card_bg, fg=TEXT_MUTED, font=F_SMALL).pack(pady=(0, 15))
@@ -654,7 +654,7 @@ class WizardPages:
         icon_color2 = SUCCESS if (appimg or ai_selected) else TEXT_MUTED
         icon_canvas(body2, "box", color=icon_color2, size=64, bg=ai_card_bg).pack(pady=(20, 10))
         
-        tk.Label(body2, text="AppImage", bg=ai_card_bg, fg=TEXT, font=F_CARD_TITLE).pack(pady=(0, 4))
+        tk.Label(body2, text="AppImage (2)", bg=ai_card_bg, fg=TEXT, font=F_CARD_TITLE).pack(pady=(0, 4))
         
         tk.Label(body2, text="Standalone AppImage in Applications folder", bg=ai_card_bg, fg=TEXT_MUTED, font=F_SMALL).pack(pady=(0, 15))
         

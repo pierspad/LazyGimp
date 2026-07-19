@@ -52,7 +52,7 @@ class LandingPage:
         title_row = tk.Frame(manage.body, bg=CARD_BG)
         title_row.pack(anchor="w")
         icon_canvas(title_row, "gear", color=TEXT, size=22).pack(side="left", padx=(0, 8))
-        tk.Label(title_row, text="Custom install (1)", bg=CARD_BG, fg=TEXT, font=F_CARD_TITLE).pack(
+        tk.Label(title_row, text="Custom install", bg=CARD_BG, fg=TEXT, font=F_CARD_TITLE).pack(
             side="left")
         autowrap_label(
             manage.body,
@@ -61,7 +61,7 @@ class LandingPage:
             bg=CARD_BG, font=F_SMALL,
         ).pack(anchor="w", fill="x", pady=(8, 16))
         open_btn = RoundedButton(manage.body, "Open (1)", variant="secondary", width=272, height=40,
-                                  command=self.show_wizard)
+                                  font=F_ITEM_TITLE, command=self.show_wizard)
         open_btn.pack(anchor="w", side="bottom")
         manage.finalize()
         bind_click_recursive(manage, self.show_wizard, skip=(open_btn,))
@@ -71,7 +71,7 @@ class LandingPage:
         title_row2 = tk.Frame(auto.body, bg=CARD_BG)
         title_row2.pack(anchor="w")
         icon_canvas(title_row2, "bolt", color=TEXT, size=22).pack(side="left", padx=(0, 8))
-        tk.Label(title_row2, text="Quick setup (2)", bg=CARD_BG, fg=TEXT, font=F_CARD_TITLE).pack(side="left")
+        tk.Label(title_row2, text="Quick setup", bg=CARD_BG, fg=TEXT, font=F_CARD_TITLE).pack(side="left")
         autowrap_label(
             auto.body,
             "Installs everything still missing, in order: PhotoGIMP, G'MIC, SAM (with a model picked "
@@ -79,7 +79,7 @@ class LandingPage:
             bg=CARD_BG, font=F_SMALL,
         ).pack(anchor="w", fill="x", pady=(8, 16))
         start_btn = RoundedButton(auto.body, "Start (2)", variant="primary", width=272, height=40,
-                                   command=self.start_quick_setup)
+                                   font=F_ITEM_TITLE, command=self.start_quick_setup)
         start_btn.pack(anchor="w", side="bottom")
         auto.finalize()
         bind_click_recursive(auto, self.start_quick_setup, skip=(start_btn,))
@@ -106,6 +106,7 @@ class LandingPage:
 
         ModernCheckbox(center, self._ephemeral_var, command=sync_ephemeral,
                        text="Delete this installer when it closes — leaves the folder clean",
+                       font=F_SUBTITLE,
                        ).pack(pady=(26, 0))
         sync_ephemeral()
 
