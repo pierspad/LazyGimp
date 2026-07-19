@@ -1,3 +1,9 @@
+## [2.0.0-dev.3](https://github.com/pierspad/LazyGimp/compare/v2.0.0-dev.2...v2.0.0-dev.3) (2026-07-19)
+
+### ✨ Features
+
+* implement GIMP prerequisite layout, arrow navigation, PageUp/PageDown, and category/model shortcuts ([83075cc](https://github.com/pierspad/LazyGimp/commit/83075cc0bee862d09c64da01a60091bfc21e14a0))
+
 ## [2.0.0-dev.2](https://github.com/pierspad/LazyGimp/compare/v2.0.0-dev.1...v2.0.0-dev.2) (2026-07-19)
 
 ### 🐛 Bug Fixes
