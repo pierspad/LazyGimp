@@ -1,3 +1,18 @@
+## [2.0.0-dev.1](https://github.com/pierspad/LazyGimp/compare/v1.2.0-dev.9...v2.0.0-dev.1) (2026-07-19)
+
+### ⚠ BREAKING CHANGES
+
+* lazygimp no longer contains the SAM implementation;
+running from a bare git checkout without a sibling GIMPSAM checkout
+needs network on first SAM use (release artifacts are unaffected —
+they vendor gimpsam).
+
+### ✨ Features
+
+* add shortcuts, preselected defaults, collapsible categories, and overlay stacking fixes ([fd87fb5](https://github.com/pierspad/LazyGimp/commit/fd87fb57d10f0d6f0e4efd5a0e21f977af718f8c))
+* aggregate SAM from the pinned gimpsam package instead of reimplementing it ([8b9b6e2](https://github.com/pierspad/LazyGimp/commit/8b9b6e2e66099438a9f0fb2bed6e8266aae9609a))
+* take gimpsam from GIMPSAM's latest official release instead of a pinned SHA ([9a9b759](https://github.com/pierspad/LazyGimp/commit/9a9b759a8463496b426467809abcad194986fb9c))
+
 ## [1.2.0-dev.9](https://github.com/pierspad/LazyGimp/compare/v1.2.0-dev.8...v1.2.0-dev.9) (2026-07-18)
 
 ### ✨ Features
