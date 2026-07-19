@@ -619,7 +619,7 @@ class WizardPages:
         icon_color = SUCCESS if (native or pm_selected) else TEXT_MUTED
         icon_canvas(body1, distro_icon, color=icon_color, size=64, bg=pm_card_bg).pack(pady=(20, 10))
         
-        tk.Label(body1, text="1", bg=pm_card_bg, fg=ACCENT, font=F_BODY_B).pack(pady=(0, 2))
+        tk.Label(body1, text="(1)", bg=pm_card_bg, fg=TEXT_MUTED, font=F_BODY_B).pack(pady=(0, 2))
         tk.Label(body1, text="Package Manager", bg=pm_card_bg, fg=TEXT, font=F_CARD_TITLE).pack(pady=(0, 4))
         
         distro_name = distro.capitalize() if distro else "Linux"
@@ -657,7 +657,7 @@ class WizardPages:
         icon_color2 = SUCCESS if (appimg or ai_selected) else TEXT_MUTED
         icon_canvas(body2, "box", color=icon_color2, size=64, bg=ai_card_bg).pack(pady=(20, 10))
         
-        tk.Label(body2, text="2", bg=ai_card_bg, fg=ACCENT, font=F_BODY_B).pack(pady=(0, 2))
+        tk.Label(body2, text="(2)", bg=ai_card_bg, fg=TEXT_MUTED, font=F_BODY_B).pack(pady=(0, 2))
         tk.Label(body2, text="AppImage", bg=ai_card_bg, fg=TEXT, font=F_CARD_TITLE).pack(pady=(0, 4))
         
         tk.Label(body2, text="Standalone AppImage in Applications folder", bg=ai_card_bg, fg=TEXT_MUTED, font=F_SMALL).pack(pady=(0, 15))
@@ -877,6 +877,8 @@ class WizardPages:
         self._sam_families_frame.pack(fill="x", expand=True)
 
         rec_key = recommended_model_key(self.hw)
+        self._sam_model_widgets = []
+        self._sam_family_cards = {}
 
         def queue_all(family):
             missing = [m for m in MODEL_REGISTRY if m.family == family and not model_installed(m)]
@@ -891,19 +893,19 @@ class WizardPages:
             sync_sam_setup_in_plan()
             refresh_sam_page()
 
-        def render_family_dynamic(parent_w, family_name, family_key, is_expanded, on_header_click):
-            fam_card = RoundedCard(parent_w)
-            fam_card.pack(fill="x", pady=(0, 10))
+        def render_family_once(family_name, family_key):
+            fam_card = RoundedCard(self._sam_families_frame)
+            # Note: do NOT pack here — rebuild_sam_families controls packing order
             
             # Collapsible header
             head = tk.Frame(fam_card.body, bg=CARD_BG)
             head.pack(fill="x", pady=(0, 4))
             
-            arrow_var = tk.StringVar(value="▼" if is_expanded else "▶")
-            arrow_lbl = tk.Label(head, textvariable=arrow_var, bg=CARD_BG, fg=ACCENT, font=F_SECTION)
+            arrow_var = tk.StringVar(value="▶")
+            arrow_lbl = tk.Label(head, textvariable=arrow_var, bg=CARD_BG, fg=TEXT, font=F_SECTION)
             arrow_lbl.pack(side="left", padx=(0, 6))
             
-            title_lbl = tk.Label(head, text=family_name, bg=CARD_BG, fg=ACCENT, font=F_SECTION)
+            title_lbl = tk.Label(head, text=family_name, bg=CARD_BG, fg=TEXT, font=F_SECTION)
             title_lbl.pack(side="left")
             
             queue_all_btn = RoundedButton(head, "Queue all missing", icon="install", variant="secondary",
@@ -912,72 +914,58 @@ class WizardPages:
             queue_all_btn.command = lambda: queue_all(family_key)
             self._wizard_cards[f"queue_all_{family_key.lower()}"] = queue_all_btn.command
             
-            # Container for models
+            # Container for models (not packed yet — rebuild_sam_families controls it)
             container = tk.Frame(fam_card.body, bg=CARD_BG)
-            if is_expanded:
-                container.pack(fill="x", pady=(4, 0))
                 
             # Toggle logic
-            arrow_lbl.bind("<Button-1>", lambda e: on_header_click())
-            title_lbl.bind("<Button-1>", lambda e: on_header_click())
-            head.bind("<Button-1>", lambda e: on_header_click())
+            arrow_lbl.bind("<Button-1>", lambda e: show_sam_category(family_key))
+            title_lbl.bind("<Button-1>", lambda e: show_sam_category(family_key))
+            head.bind("<Button-1>", lambda e: show_sam_category(family_key))
             for w in (arrow_lbl, title_lbl, head):
                 try:
                     w.configure(cursor="hand2")
                 except Exception:
                     pass
 
-            for spec in [m for m in MODEL_REGISTRY if m.family == family_key]:
+            family_models = [m for m in MODEL_REGISTRY if m.family == family_key]
+            for idx, spec in enumerate(family_models):
                 installed = model_installed(spec)
-                install_key, remove_key = f"sam_model:{spec.key}:install", f"sam_model:{spec.key}:remove"
-                is_queued = self.plan.has(install_key) if not installed else self.plan.has(remove_key)
-                
-                if is_queued:
-                    card_bg = "#2e1b1d" if installed else "#152e20"
-                    card_hover_bg = "#3b2527" if installed else "#1e3d2c"
-                    active_border = DANGER if installed else SUCCESS
-                    active_width = 2
-                else:
-                    card_bg = CARD_BG
-                    card_hover_bg = "#2f323a"
-                    active_border = None
-                    active_width = 1
 
-                row = RoundedCard(container, bg=card_bg, border=CARD_BORDER,
-                                  hover_bg=card_hover_bg, active_border=active_border,
-                                  active_width=active_width, hover_border=ACCENT, pad=14, radius=16)
+                row = RoundedCard(container, bg=CARD_BG, border=CARD_BORDER,
+                                  hover_bg="#2f323a", active_border=None,
+                                  active_width=1, hover_border=ACCENT, pad=14, radius=16)
                 row.pack(fill="x", pady=6)
                 rbody = row.body
-                top = tk.Frame(rbody, bg=card_bg)
+                top = tk.Frame(rbody, bg=CARD_BG)
                 top.pack(fill="both", expand=True)
                 
-                left = tk.Frame(top, bg=card_bg)
+                left = tk.Frame(top, bg=CARD_BG)
                 left.pack(side="left", fill="x", expand=True)
-                name_row = tk.Frame(left, bg=card_bg)
+                name_row = tk.Frame(left, bg=CARD_BG)
                 name_row.pack(anchor="w")
-                tk.Label(name_row, text=spec.label, bg=card_bg, fg=TEXT, font=F_ITEM_TITLE).pack(
+                tk.Label(name_row, text=spec.label, bg=CARD_BG, fg=TEXT, font=F_ITEM_TITLE).pack(
                     side="left")
-                tk.Label(name_row, text=f"   {spec.size}", bg=card_bg, fg=TEXT_MUTED, font=F_SMALL).pack(
+                tk.Label(name_row, text=f"   {spec.size}", bg=CARD_BG, fg=TEXT_MUTED, font=F_SMALL).pack(
                     side="left")
                 if spec.key == rec_key:
-                    tk.Label(name_row, text="  ★ Recommended", bg=card_bg, fg=ACCENT,
+                    tk.Label(name_row, text="  ★ Recommended", bg=CARD_BG, fg=ACCENT,
                              font=F_SMALL_B).pack(side="left")
-                rating_widget(left, spec.quality, spec.speed, bg=card_bg).pack(anchor="w", pady=(4, 0))
+                rating_widget(left, spec.quality, spec.speed, bg=CARD_BG).pack(anchor="w", pady=(4, 0))
 
-                right = tk.Frame(top, bg=card_bg)
+                right = tk.Frame(top, bg=CARD_BG)
                 right.pack(side="right", padx=(16, 0), fill="y")
                 
-                if installed:
-                    rik, ric = ("trash", DANGER) if is_queued else ("check", SUCCESS)
-                else:
-                    rik, ric = ("check", SUCCESS) if is_queued else ("circle", CARD_BORDER)
+                tk.Label(right, text=f"[Shift {idx + 1}]", bg=CARD_BG, fg=TEXT_MUTED, font=F_SMALL_B).pack(
+                    side="left", padx=(0, 10))
                 
-                right_canvas = icon_canvas(right, rik, color=ric, size=28, bg=card_bg)
+                rik, ric = ("check", SUCCESS) if installed else ("circle", CARD_BORDER)
+                right_canvas = icon_canvas(right, rik, color=ric, size=28, bg=CARD_BG)
                 right_canvas.pack(anchor="center", expand=True)
                 
-                def make_toggle_cmd(s=spec, inst=installed):
+                def make_toggle_cmd(s=spec):
                     ikey, rkey = f"sam_model:{s.key}:install", f"sam_model:{s.key}:remove"
                     def cmd():
+                        inst = model_installed(s)
                         if inst:
                             self.plan.toggle(PlannedAction(rkey, f"Remove {s.label}", "remove",
                                                             self._sam_model_remove_run(s)))
@@ -989,31 +977,46 @@ class WizardPages:
                     return cmd
                 
                 row._command = make_toggle_cmd()
-                # Expose keyboard shortcut mapping key to app.py
-                self._wizard_cards[f"sam_model:{spec.label}"] = row._command
+                self._wizard_cards[f"sam_model:{spec.key}"] = row._command
                 self._sam_model_widgets.append((row, right_canvas, spec, installed))
                 row.finalize()
             fam_card.finalize()
+            return {
+                "card_widget": fam_card,
+                "arrow_var": arrow_var,
+                "container": container,
+            }
+
+        # Build all family cards once (not yet packed)
+        self._sam_family_cards["SAM1"] = render_family_once("SAM 1 (1)", "SAM1")
+        self._sam_family_cards["SAM2"] = render_family_once("SAM 2 (2)", "SAM2")
+        self._sam_family_cards["SAM3"] = self._wizard_render_sam3_dynamic(
+            self._sam_families_frame, False,
+            on_toggle=lambda: (sync_sam_setup_in_plan(), refresh_sam_page()),
+            on_header_click=lambda: show_sam_category("SAM3"))
 
         def rebuild_sam_families():
-            for w in self._sam_families_frame.winfo_children():
-                w.destroy()
-            self._sam_model_widgets = []
+            # 1. Unpack all family cards
+            for key in ("SAM1", "SAM2", "SAM3"):
+                if key in self._sam_family_cards:
+                    self._sam_family_cards[key]["card_widget"].pack_forget()
             
-            all_families = [("SAM 1", "SAM1"), ("SAM 2", "SAM2"), ("SAM 3", "SAM3")]
+            # 2. Compute ordering: active category first
+            all_families = ["SAM1", "SAM2", "SAM3"]
             expanded_key = self._sam_expanded_family
-            ordered = [item for item in all_families if item[1] == expanded_key] + \
-                      [item for item in all_families if item[1] != expanded_key]
-                      
-            for name, key in ordered:
+            order = [expanded_key] + [k for k in all_families if k != expanded_key]
+            
+            # 3. Repack in new order and update arrow/container state
+            for key in order:
+                fam_info = self._sam_family_cards[key]
+                fam_info["card_widget"].pack(fill="x", pady=(0, 10))
                 is_exp = (key == expanded_key)
-                if key == "SAM3":
-                    self._wizard_render_sam3_dynamic(self._sam_families_frame, is_exp,
-                                                     on_toggle=lambda: (sync_sam_setup_in_plan(), refresh_sam_page()),
-                                                     on_header_click=lambda: show_sam_category("SAM3"))
+                fam_info["arrow_var"].set("▼" if is_exp else "▶")
+                if is_exp:
+                    fam_info["container"].pack(fill="x", pady=(4, 0))
                 else:
-                    render_family_dynamic(self._sam_families_frame, name, key, is_exp,
-                                          on_header_click=lambda k=key: show_sam_category(k))
+                    fam_info["container"].pack_forget()
+            
             refresh_sam_page()
 
         def refresh_sam_page():
@@ -1023,22 +1026,21 @@ class WizardPages:
                         card._sam3_refresher(model_installed(spec))
                     continue
                 ikey, rkey = f"sam_model:{spec.key}:install", f"sam_model:{spec.key}:remove"
-                q = self.plan.has(rkey) if installed else self.plan.has(ikey)
+                curr_installed = model_installed(spec)
+                q = self.plan.has(rkey) if curr_installed else self.plan.has(ikey)
                 
                 if q:
-                    card._bg = "#2e1b1d" if installed else "#152e20"
-                    card._hover_bg = "#3b2527" if installed else "#1e3d2c"
-                    card._active_border = DANGER if installed else SUCCESS
+                    card._bg = "#2e1b1d" if curr_installed else "#152e20"
+                    card._hover_bg = "#3b2527" if curr_installed else "#1e3d2c"
+                    card._active_border = DANGER if curr_installed else SUCCESS
                     card._active_width = 2
-                    
-                    rik, ric = ("trash", DANGER) if installed else ("check", SUCCESS)
+                    rik, ric = ("trash", DANGER) if curr_installed else ("check", SUCCESS)
                 else:
                     card._bg = CARD_BG
                     card._hover_bg = "#2f323a"
                     card._active_border = None
                     card._active_width = 1
-                    
-                    rik, ric = ("check", SUCCESS) if installed else ("circle", CARD_BORDER)
+                    rik, ric = ("check", SUCCESS) if curr_installed else ("circle", CARD_BORDER)
                 
                 rcanvas.delete("all")
                 from ..icons import blit_icon
@@ -1054,7 +1056,7 @@ class WizardPages:
         spec = MODEL_BY_KEY["sam3"]
         installed = model_installed(spec)
         card = RoundedCard(parent)
-        card.pack(fill="x", pady=(0, 10))
+        # Note: do NOT pack here — rebuild_sam_families controls packing order
         body = card.body
 
         # Collapsible header
@@ -1062,10 +1064,10 @@ class WizardPages:
         head.pack(fill="x", pady=(0, 4))
         
         arrow_var = tk.StringVar(value="▼" if is_expanded else "▶")
-        arrow_lbl = tk.Label(head, textvariable=arrow_var, bg=CARD_BG, fg=ACCENT, font=F_SECTION)
+        arrow_lbl = tk.Label(head, textvariable=arrow_var, bg=CARD_BG, fg=TEXT, font=F_SECTION)
         arrow_lbl.pack(side="left", padx=(0, 6))
         
-        title_lbl = tk.Label(head, text="SAM 3", bg=CARD_BG, fg=ACCENT, font=F_SECTION)
+        title_lbl = tk.Label(head, text="SAM 3 (3)", bg=CARD_BG, fg=TEXT, font=F_SECTION)
         title_lbl.pack(side="left")
         
         container = tk.Frame(body, bg=CARD_BG)
@@ -1174,6 +1176,11 @@ class WizardPages:
 
         refresh(True)
         card.finalize()
+        return {
+            "card_widget": card,
+            "arrow_var": arrow_var,
+            "container": container,
+        }
 
     def _run_sam3_download(self, job: Job):
         token = self.hf_token_var.get().strip()
