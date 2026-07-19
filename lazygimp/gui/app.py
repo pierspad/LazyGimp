@@ -186,19 +186,26 @@ class LazyGimpApp(LandingPage, UninstallPage, WizardPages, InstallProgressPage):
             if key in ("1", "q"):
                 self.show_wizard()
                 return
-            elif key in ("2", "u"):
-                if hasattr(self, "show_uninstall"):
+            elif key == "2":
+                self.start_quick_setup()
+                return
+            elif key == "u":
+                if hasattr(self, "show_uninstall_confirm"):
+                    self.show_uninstall_confirm()
+                elif hasattr(self, "show_uninstall"):
                     self.show_uninstall()
                 return
         
         elif self.current_screen == "wizard" and hasattr(self, "wizard_steps"):
             step = self.wizard_steps[self.wizard_index]
             
-            if key == "right":
-                if self._wizard_can_advance():
+            if key in ("right", "return"):
+                if step.key == "review" and key == "return":
+                    self._wizard_start_install()
+                elif self._wizard_can_advance():
                     self._wizard_advance()
                 return
-            elif key in ("left", "escape"):
+            elif key in ("left", "escape", "backspace"):
                 self._wizard_back()
                 return
             elif key == "s":
@@ -271,7 +278,7 @@ class LazyGimpApp(LandingPage, UninstallPage, WizardPages, InstallProgressPage):
                         handler()
                     
             elif step.key == "review":
-                if key in ("return", "space"):
+                if key == "space":
                     self._wizard_start_install()
                 elif key in ("1", "2", "3", "4", "5", "6", "7", "8", "9"):
                     idx = int(key) - 1

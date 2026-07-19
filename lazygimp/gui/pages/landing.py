@@ -52,7 +52,7 @@ class LandingPage:
         title_row = tk.Frame(manage.body, bg=CARD_BG)
         title_row.pack(anchor="w")
         icon_canvas(title_row, "gear", color=TEXT, size=22).pack(side="left", padx=(0, 8))
-        tk.Label(title_row, text="Manage components", bg=CARD_BG, fg=TEXT, font=F_CARD_TITLE).pack(
+        tk.Label(title_row, text="Custom install (1)", bg=CARD_BG, fg=TEXT, font=F_CARD_TITLE).pack(
             side="left")
         autowrap_label(
             manage.body,
@@ -60,7 +60,7 @@ class LandingPage:
             "want installed or removed, then run the whole checklist in one pass.",
             bg=CARD_BG, font=F_SMALL,
         ).pack(anchor="w", fill="x", pady=(8, 16))
-        open_btn = RoundedButton(manage.body, "Open", variant="secondary", width=272, height=40,
+        open_btn = RoundedButton(manage.body, "Open (1)", variant="secondary", width=272, height=40,
                                   command=self.show_wizard)
         open_btn.pack(anchor="w", side="bottom")
         manage.finalize()
@@ -71,14 +71,14 @@ class LandingPage:
         title_row2 = tk.Frame(auto.body, bg=CARD_BG)
         title_row2.pack(anchor="w")
         icon_canvas(title_row2, "bolt", color=TEXT, size=22).pack(side="left", padx=(0, 8))
-        tk.Label(title_row2, text="Quick setup", bg=CARD_BG, fg=TEXT, font=F_CARD_TITLE).pack(side="left")
+        tk.Label(title_row2, text="Quick setup (2)", bg=CARD_BG, fg=TEXT, font=F_CARD_TITLE).pack(side="left")
         autowrap_label(
             auto.body,
             "Installs everything still missing, in order: PhotoGIMP, G'MIC, SAM (with a model picked "
             "for your hardware) and Batcher. Already-installed pieces are left alone.",
             bg=CARD_BG, font=F_SMALL,
         ).pack(anchor="w", fill="x", pady=(8, 16))
-        start_btn = RoundedButton(auto.body, "Start", variant="primary", width=272, height=40,
+        start_btn = RoundedButton(auto.body, "Start (2)", variant="primary", width=272, height=40,
                                    command=self.start_quick_setup)
         start_btn.pack(anchor="w", side="bottom")
         auto.finalize()

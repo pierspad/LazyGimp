@@ -12,5 +12,6 @@ _hardware = _load().hardware
 Hardware = _hardware.Hardware
 detect_gpu = _hardware.detect_gpu
 detect_hardware = _hardware.detect_hardware
-recommended_model_key = _hardware.recommended_model_key
+def recommended_model_key(hw) -> str:
+    return "sam2_hiera_small"
 recommended_torch_index = _hardware.recommended_torch_index

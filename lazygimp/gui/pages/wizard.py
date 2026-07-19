@@ -50,6 +50,39 @@ class WizardPages:
 
     def show_wizard(self):
         self.plan = InstallPlan()
+        
+        # Preselect defaults on startup
+        if not (gimp_native_installed() or appimage_present() or find_gimp_binary()):
+            if detect_distro():
+                self.plan.add(PlannedAction(
+                    "gimp_install_pm", "Install GIMP (package manager)", "install",
+                    lambda job: install_gimp_package_manager(job, include_gmic=False)
+                ))
+
+        if not photogimp_installed():
+            self.plan.add(PlannedAction(
+                "photogimp:install", "Install PhotoGIMP", "install",
+                lambda job: install_photogimp(job, gimp_command=(find_gimp_command() or [None])[0])
+            ))
+
+        if gmic_available_on_this_release() and not gmic_installed():
+            self.plan.add(PlannedAction(
+                "gmic:install", "Install G'MIC", "install",
+                lambda job: install_gmic_only(job)
+            ))
+
+        spec = MODEL_BY_KEY["sam2_hiera_small"]
+        if not model_installed(spec):
+            self.plan.add(PlannedAction(
+                f"sam_model:{spec.key}:install", f"Download {spec.label}", "install",
+                self._sam_model_install_run(spec)
+            ))
+            if not backend_ready() or not segany_plugin_installed():
+                self.plan.add(PlannedAction(
+                    "sam_setup:install", "Install SAM backend", "install",
+                    self._sam_setup_install_run()
+                ))
+
         default_choice = list(TORCH_INDEX_URLS.keys())[
             list(TORCH_INDEX_URLS.values()).index(recommended_torch_index(self.hw))]
         self.torch_choice = tk.StringVar(value=default_choice)
@@ -204,7 +237,11 @@ class WizardPages:
             self._wizard_body_parent = body_parent
 
         # Refresh the page state to match current plan
-        if step.key == "components":
+        if step.key == "gimp":
+            for w in body_parent.winfo_children():
+                w.destroy()
+            self._wizard_render_gimp(body_parent)
+        elif step.key == "components":
             for fn in getattr(self, "_component_card_refreshers", []):
                 try:
                     fn()
@@ -353,7 +390,7 @@ class WizardPages:
     def _wizard_toggle_card(self, parent, *, key: str, title: str, icon_kind: str, installed: bool, description: str,
                              install_label: str, install_run, uninstall_run, uninstall_label: str = "Uninstall",
                              install_enabled: bool = True, disabled_reason: Optional[str] = None,
-                             advance: bool = True, extra=None):
+                             advance: bool = True, extra=None, shortcut_num: Optional[str] = None):
         if installed:
             action_key = f"{key}:remove"
             action_label = f"Remove {install_label}"
@@ -518,8 +555,12 @@ class WizardPages:
         right_frame = tk.Frame(main_row, bg=card_bg)
         right_frame.pack(side="right", padx=(16, 0), fill="y")
         
+        if shortcut_num:
+            tk.Label(right_frame, text=f"({shortcut_num})", bg=card_bg, fg=TEXT_MUTED, font=F_SMALL_B).pack(
+                side="left", padx=(0, 10))
+            
         right_canvas = icon_canvas(right_frame, right_icon_kind, color=right_icon_color, size=28, bg=card_bg)
-        right_canvas.pack(anchor="center", expand=True)
+        right_canvas.pack(side="left", anchor="center", expand=True)
 
         if extra:
             extra_frame = tk.Frame(body, bg=card_bg)
@@ -661,6 +702,7 @@ class WizardPages:
             uninstall_run=lambda job: remove_photogimp(job),
             extra=extra,
             advance=False,
+            shortcut_num="1",
         )
 
     def _repair_photogimp_desktop(self):
@@ -690,6 +732,7 @@ class WizardPages:
                               f"No G'MIC package on this distribution release — see {GMIC_DOWNLOAD_PAGE} "
                               "for a manual build."),
             advance=False,
+            shortcut_num="2",
         )
 
     # -- SAM: one setup action (plug-in + backend) + models + SAM 3.1 -------
@@ -815,18 +858,51 @@ class WizardPages:
         ).pack(anchor="w", fill="x", pady=(6, 10))
 
         rec_key = recommended_model_key(self.hw)
-        for family in ("SAM1", "SAM2"):
+
+        def render_family(family_name, family_key, default_expanded):
             fam_card = RoundedCard(parent)
             fam_card.pack(fill="x", pady=(0, 10))
+            
+            # Collapsible header
             head = tk.Frame(fam_card.body, bg=CARD_BG)
             head.pack(fill="x", pady=(0, 4))
-            tk.Label(head, text=family, bg=CARD_BG, fg=ACCENT, font=F_SECTION).pack(side="left")
+            
+            arrow_var = tk.StringVar(value="▼" if default_expanded else "▶")
+            arrow_lbl = tk.Label(head, textvariable=arrow_var, bg=CARD_BG, fg=ACCENT, font=F_SECTION)
+            arrow_lbl.pack(side="left", padx=(0, 6))
+            
+            title_lbl = tk.Label(head, text=family_name, bg=CARD_BG, fg=ACCENT, font=F_SECTION)
+            title_lbl.pack(side="left")
+            
             queue_all_btn = RoundedButton(head, "Queue all missing", icon="install", variant="secondary",
                                            width=170)
             queue_all_btn.pack(side="right")
             queue_all_buttons.append(queue_all_btn)
+            
+            # Container for models
+            container = tk.Frame(fam_card.body, bg=CARD_BG)
+            if default_expanded:
+                container.pack(fill="x", pady=(4, 0))
+                
+            # Toggle logic
+            def toggle(event=None):
+                if container.winfo_viewable():
+                    container.pack_forget()
+                    arrow_var.set("▶")
+                else:
+                    container.pack(fill="x", pady=(4, 0))
+                    arrow_var.set("▼")
+            
+            arrow_lbl.bind("<Button-1>", toggle)
+            title_lbl.bind("<Button-1>", toggle)
+            head.bind("<Button-1>", toggle)
+            for w in (arrow_lbl, title_lbl, head):
+                try:
+                    w.configure(cursor="hand2")
+                except Exception:
+                    pass
 
-            for spec in [m for m in MODEL_REGISTRY if m.family == family]:
+            for spec in [m for m in MODEL_REGISTRY if m.family == family_key]:
                 installed = model_installed(spec)
                 install_key, remove_key = f"sam_model:{spec.key}:install", f"sam_model:{spec.key}:remove"
                 is_queued = self.plan.has(install_key) if not installed else self.plan.has(remove_key)
@@ -842,7 +918,7 @@ class WizardPages:
                     active_border = None
                     active_width = 1
 
-                row = RoundedCard(fam_card.body, bg=card_bg, border=CARD_BORDER,
+                row = RoundedCard(container, bg=card_bg, border=CARD_BORDER,
                                   hover_bg=card_hover_bg, active_border=active_border,
                                   active_width=active_width, hover_border=ACCENT, pad=14, radius=16)
                 row.pack(fill="x", pady=6)
@@ -888,9 +964,12 @@ class WizardPages:
                     return cmd
                 
                 row._command = make_toggle_cmd()
+                # Expose keyboard shortcut mapping key to app.py
+                self._wizard_cards[f"sam_model:{spec.label}"] = row._command
                 model_widgets.append((row, right_canvas, spec, installed))
                 row.finalize()
             fam_card.finalize()
+            return queue_all_btn
 
         def queue_all(family):
             missing = [m for m in MODEL_REGISTRY if m.family == family and not model_installed(m)]
@@ -905,13 +984,20 @@ class WizardPages:
             sync_sam_setup_in_plan()
             refresh_sam_page()
 
-        families = ("SAM1", "SAM2")
-        for fam, qbtn in zip(families, queue_all_buttons):
-            qbtn.command = lambda fam=fam: queue_all(fam)
-            self._wizard_cards[f"queue_all_{fam.lower()}"] = qbtn.command
-
-        # SAM3 is always enabled because setup is automatic
+        # Render SAM 2 first (expanded by default)
+        qbtn_sam2 = render_family("SAM 2", "SAM2", True)
+        
+        # Render SAM 3.1 second (expanded by default)
         sam3_widgets = self._wizard_render_sam3(parent, lambda: True, on_toggle=lambda: (sync_sam_setup_in_plan(), refresh_sam_page()))
+        
+        # Render SAM 1 last (collapsed by default)
+        qbtn_sam1 = render_family("SAM 1", "SAM1", False)
+
+        qbtn_sam2.command = lambda: queue_all("SAM2")
+        self._wizard_cards["queue_all_sam2"] = qbtn_sam2.command
+        
+        qbtn_sam1.command = lambda: queue_all("SAM1")
+        self._wizard_cards["queue_all_sam1"] = qbtn_sam1.command
 
         def refresh_sam_page():
             for card, rcanvas, spec, installed in model_widgets:
@@ -964,13 +1050,45 @@ class WizardPages:
         card.pack(fill="x", pady=(0, 10))
         body = card.body
 
-        top = tk.Frame(body, bg=CARD_BG)
+        # Collapsible header
+        head = tk.Frame(body, bg=CARD_BG)
+        head.pack(fill="x", pady=(0, 4))
+        
+        arrow_var = tk.StringVar(value="▼")
+        arrow_lbl = tk.Label(head, textvariable=arrow_var, bg=CARD_BG, fg=ACCENT, font=F_SECTION)
+        arrow_lbl.pack(side="left", padx=(0, 6))
+        
+        title_lbl = tk.Label(head, text="SAM 3", bg=CARD_BG, fg=ACCENT, font=F_SECTION)
+        title_lbl.pack(side="left")
+        
+        container = tk.Frame(body, bg=CARD_BG)
+        container.pack(fill="x", pady=(4, 0))
+        
+        def toggle_collapse(event=None):
+            if container.winfo_viewable():
+                container.pack_forget()
+                arrow_var.set("▶")
+            else:
+                container.pack(fill="x", pady=(4, 0))
+                arrow_var.set("▼")
+                
+        arrow_lbl.bind("<Button-1>", toggle_collapse)
+        title_lbl.bind("<Button-1>", toggle_collapse)
+        head.bind("<Button-1>", toggle_collapse)
+        for w in (arrow_lbl, title_lbl, head):
+            try:
+                w.configure(cursor="hand2")
+            except Exception:
+                pass
+
+        # Top row inside container (not body directly)
+        top = tk.Frame(container, bg=CARD_BG)
         top.pack(fill="x")
         left = tk.Frame(top, bg=CARD_BG)
         left.pack(side="left", fill="x", expand=True)
         name_row = tk.Frame(left, bg=CARD_BG)
         name_row.pack(anchor="w")
-        tk.Label(name_row, text=f"{spec.label} (SAM3)", bg=CARD_BG, fg=TEXT, font=F_ITEM_TITLE).pack(
+        tk.Label(name_row, text=f"{spec.label} details", bg=CARD_BG, fg=TEXT, font=F_ITEM_TITLE).pack(
             side="left")
         tk.Label(name_row, text=f"   {spec.size}", bg=CARD_BG, fg=TEXT_MUTED, font=F_SMALL).pack(side="left")
         rating_widget(left, spec.quality, spec.speed, bg=CARD_BG).pack(anchor="w", pady=(4, 0))
@@ -978,13 +1096,13 @@ class WizardPages:
         install_key, remove_key = "sam3:install", "sam3:remove"
 
         autowrap_label(
-            body, f"Gated on Hugging Face ({SAM3_HF_REPO_ID}) — request access, wait for approval, then "
+            container, f"Gated on Hugging Face ({SAM3_HF_REPO_ID}) — request access, wait for approval, then "
                   "paste a READ token below. The token is only checked against the repo once the plan "
                   "actually runs, so queuing it now is free.",
             fg=TEXT_MUTED, bg=CARD_BG, font=F_SMALL,
         ).pack(anchor="w", fill="x", pady=(12, 14))
 
-        row1 = tk.Frame(body, bg=CARD_BG)
+        row1 = tk.Frame(container, bg=CARD_BG)
         row1.pack(fill="x", pady=(0, 10))
         RoundedButton(row1, "Request access on Hugging Face", icon="link", variant="secondary", width=270,
                       command=lambda: webbrowser.open(SAM3_HF_PAGE)).pack(side="left")
@@ -1001,7 +1119,7 @@ class WizardPages:
 
         transformers_btn.command = toggle_transformers
 
-        row2 = tk.Frame(body, bg=CARD_BG)
+        row2 = tk.Frame(container, bg=CARD_BG)
         row2.pack(fill="x")
         tk.Label(row2, text="HF token", bg=CARD_BG, fg=TEXT, font=F_BODY_B).pack(side="left")
         hf_entry = ctk.CTkEntry(row2, textvariable=self.hf_token_var, show="•", width=300, height=36,
@@ -1077,12 +1195,13 @@ class WizardPages:
     def _wizard_render_batcher(self, parent):
         installed = batcher_installed()
         self._wizard_toggle_card(
-            parent, key="batcher", title="Batcher", icon_kind="batcher",
+            parent, key="batcher", title="Batcher (Optional)", icon_kind="batcher",
             installed=installed, description="Batch image processing / export layers",
             install_label="Install Batcher",
             install_run=lambda job: install_batcher(job),
             uninstall_run=lambda job: remove_batcher(job),
             advance=False,
+            shortcut_num="3",
         )
 
     # -- Review & install --------------------------------------------------
