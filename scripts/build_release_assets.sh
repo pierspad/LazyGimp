@@ -57,6 +57,33 @@ copy_first() { # <dest-name> <candidate>...
 copy_first README.md docs/README.md README.md
 copy_first LICENSE docs/LICENSE LICENSE
 
+# --- vendor the pinned gimpsam package into the bundle ---------------------
+# LazyGimp is an aggregator: everything SAM comes from pierspad/GIMPSAM at
+# the exact GIMPSAM_REF pinned in lazygimp/constants.py. A sibling checkout
+# wins (dev builds install what's on disk); otherwise the pinned source
+# zipball is fetched — so a release always ships a known GIMPSAM state.
+GIMPSAM_REF="$(python3 -c "
+import re, pathlib
+text = pathlib.Path('${ROOT}/lazygimp/constants.py').read_text()
+print(re.search(r'GIMPSAM_REF = \"([^\"]+)\"', text).group(1))")"
+SIBLING="${ROOT}/../GIMPSAM"
+if [[ -f "${SIBLING}/gimpsam/__init__.py" ]]; then
+  echo "vendoring gimpsam from sibling checkout ${SIBLING}"
+  cp -a "${SIBLING}/gimpsam" \
+        "${SIBLING}/seganyplugin.py" "${SIBLING}/seganybridge.py" "$BUNDLE/"
+else
+  echo "vendoring gimpsam from pierspad/GIMPSAM@${GIMPSAM_REF}"
+  GS_TMP="${STAGE}/gimpsam-src"
+  mkdir -p "$GS_TMP"
+  curl -fsSL "https://github.com/pierspad/GIMPSAM/archive/${GIMPSAM_REF}.zip" \
+    -o "${GS_TMP}/gimpsam.zip"
+  (cd "$GS_TMP" && unzip -q gimpsam.zip)
+  GS_ROOT="$(dirname "$(find "$GS_TMP" -path '*/gimpsam/__init__.py' | head -1)")"
+  GS_ROOT="$(dirname "$GS_ROOT")"
+  cp -a "${GS_ROOT}/gimpsam" \
+        "${GS_ROOT}/seganyplugin.py" "${GS_ROOT}/seganybridge.py" "$BUNDLE/"
+fi
+
 find "$BUNDLE" -name '__pycache__' -type d -exec rm -rf {} +
 
 sed -i "s/^__version__ = .*/__version__ = \"${VERSION}\"/" \
@@ -65,7 +92,7 @@ sed -i "s/^__version__ = .*/__version__ = \"${VERSION}\"/" \
 # --- 1. zipapp: one .pyz file, runs on any python3 with Tk -----------------
 PYZ_STAGE="${STAGE}/pyz"
 mkdir -p "$PYZ_STAGE"
-cp -a "${BUNDLE}/lazygimp" "$PYZ_STAGE/"
+cp -a "${BUNDLE}/lazygimp" "${BUNDLE}/gimpsam" "$PYZ_STAGE/"
 python3 -m zipapp "$PYZ_STAGE" \
   --main "lazygimp.cli:main" \
   --python "/usr/bin/env python3" \
@@ -83,6 +110,8 @@ chmod +x "${DIST}/lazygimp.pyz"
   --specpath "${STAGE}/pyi-spec" \
   --paths "$BUNDLE" \
   --hidden-import tkinter \
+  --hidden-import gimpsam \
+  --collect-submodules gimpsam \
   --collect-all customtkinter \
   --collect-submodules PIL \
   "${BUNDLE}/installer.py"

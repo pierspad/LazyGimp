@@ -217,30 +217,38 @@ class LazyGimpApp(LandingPage, UninstallPage, WizardPages, InstallProgressPage):
             elif step.key == "components":
                 if key in ("1", "p"):
                     handler = getattr(self, "_wizard_cards", {}).get("photogimp")
-                    if handler: handler()
+                    if handler:
+                        handler()
                 elif key in ("2", "g"):
                     handler = getattr(self, "_wizard_cards", {}).get("gmic")
-                    if handler: handler()
+                    if handler:
+                        handler()
                 elif key in ("3", "b"):
                     handler = getattr(self, "_wizard_cards", {}).get("batcher")
-                    if handler: handler()
+                    if handler:
+                        handler()
                     
             elif step.key == "sam":
                 if key == "1":
                     handler = getattr(self, "_wizard_cards", {}).get("sam_model:vit_b")
-                    if handler: handler()
+                    if handler:
+                        handler()
                 elif key == "2":
                     handler = getattr(self, "_wizard_cards", {}).get("sam_model:vit_l")
-                    if handler: handler()
+                    if handler:
+                        handler()
                 elif key == "3":
                     handler = getattr(self, "_wizard_cards", {}).get("sam_model:vit_h")
-                    if handler: handler()
+                    if handler:
+                        handler()
                 elif key == "4":
                     handler = getattr(self, "_wizard_cards", {}).get("sam_model:hiera_tiny")
-                    if handler: handler()
+                    if handler:
+                        handler()
                 elif key in ("5", "h"):
                     handler = getattr(self, "_wizard_cards", {}).get("sam3")
-                    if handler: handler()
+                    if handler:
+                        handler()
                 elif key == "t":
                     entry = getattr(self, "_hf_token_entry", None)
                     if entry and entry.winfo_exists():
@@ -255,10 +263,12 @@ class LazyGimpApp(LandingPage, UninstallPage, WizardPages, InstallProgressPage):
                             pass
                 elif key == "a":
                     handler = getattr(self, "_wizard_cards", {}).get("queue_all_sam1")
-                    if handler: handler()
+                    if handler:
+                        handler()
                 elif key == "b":
                     handler = getattr(self, "_wizard_cards", {}).get("queue_all_sam2")
-                    if handler: handler()
+                    if handler:
+                        handler()
                     
             elif step.key == "review":
                 if key in ("return", "space"):

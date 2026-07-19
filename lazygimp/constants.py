@@ -41,42 +41,18 @@ PHOTOGIMP_RELEASE_TAG = "3.1"
 BATCHER_REPO = "kamilburda/batcher"
 BATCHER_RELEASE_TAG = "1.2.9"
 
-# Prefer pierspad/GIMPSAM's plug-in (lazy per-family imports, SAM2 + SAM3.1
-# support) over the older pierspad/gimpsegany fork; both are tried as a
-# local-checkout sibling first (for active development next to this file),
-# then as a GitHub raw fallback.
-SEGANY_SOURCES = [
-    ("GIMPSAM", "pierspad/GIMPSAM", "main"),
-    ("gimpsegany", "pierspad/gimpsegany", "main"),
-]
-SEGANY_PLUGIN_FILES = ["seganyplugin.py", "seganybridge.py"]
-SEGANY_README = "https://github.com/pierspad/GIMPSAM#readme"
+# Everything SAM (model registry, torch indexes, venv backend, plug-in
+# files) lives in the gimpsam package — pierspad/GIMPSAM — pinned here to
+# an exact ref so a LazyGimp release always ships/downloads a known
+# GIMPSAM state, never "whatever main is today". Bump deliberately:
+# after each GIMPSAM release, point this at its tag (e.g. "v2.0.0").
+# See lazygimp/gimpsam_dep.py for the full resolution order.
+GIMPSAM_REPO = "pierspad/GIMPSAM"
+GIMPSAM_REF = "261719725bf10398df59e5ed861f4ac63cf3500c"
 
 GIMP_VERSIONS_JSON_URL = "https://www.gimp.org/gimp_versions.json"
 GIMP_DOWNLOAD_MIRROR = "https://download.gimp.org/gimp"
 GMIC_DOWNLOAD_PAGE = "https://gmic.eu/download.html"
-
-SAM1_PIP_SPEC = "git+https://github.com/facebookresearch/segment-anything.git"
-SAM2_PIP_SPEC = "git+https://github.com/facebookresearch/segment-anything-2.git"
-SAM3_HF_REPO_ID = "facebook/sam3.1"
-SAM3_HF_PAGE = f"https://huggingface.co/{SAM3_HF_REPO_ID}"
-
-# PyTorch wheel indexes offered in the SAM setup. To refresh this list:
-# every entry is a directory under https://download.pytorch.org/whl/ —
-# checking which ones exist is one command:
-#   for i in cpu cu126 cu128 cu130 rocm6.4 rocm7.2; do
-#     curl -so /dev/null -w "$i %{http_code}\n" https://download.pytorch.org/whl/$i/torch/
-#   done
-# (kept as explicit pins so an unattended install can never silently switch
-# to a wheel index that doesn't exist yet for the user's GPU stack)
-TORCH_INDEX_URLS = {
-    "CPU (universal, smaller download)": "https://download.pytorch.org/whl/cpu",
-    "NVIDIA CUDA 12.6": "https://download.pytorch.org/whl/cu126",
-    "NVIDIA CUDA 12.8": "https://download.pytorch.org/whl/cu128",
-    "NVIDIA CUDA 13.0": "https://download.pytorch.org/whl/cu130",
-    "AMD ROCm 6.4": "https://download.pytorch.org/whl/rocm6.4",
-    "AMD ROCm 7.2 (latest)": "https://download.pytorch.org/whl/rocm7.2",
-}
 
 
 def ensure_state_dir() -> str:

@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from .constants import BATCHER_RELEASE_TAG, BATCHER_REPO, HERE, SEGANY_PLUGIN_FILES, SEGANY_SOURCES, VENV_PYTHON
+from .constants import BATCHER_RELEASE_TAG, BATCHER_REPO, GIMPSAM_REF
 from .gimp_detect import gimp_plugins_dir, invalidate_gimp_plugin_cache
 from .job import Job
-from .models import ModelSpec, model_path
 from .util import fetch_latest_github_release_assets
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:  # a plain import would force the gimpsam dependency
+    from .models import ModelSpec
 import glob
-import json
 import os
 import shutil
 import tempfile
-import urllib.request
 import zipfile
 
 # ---------------------------------------------------------------------------
@@ -19,6 +19,11 @@ import zipfile
 # copy into GIMP's plug-ins dir, record nothing but the folder's own
 # existence (its name IS the record: only LazyGimp ever creates a
 # "batcher"/"seganyplugin" folder there).
+#
+# The SAM plug-in itself is owned by the gimpsam package: the functions
+# below just forward to it at the pinned GIMPSAM_REF, keeping their old
+# names so the GUI/CLI call sites never changed. Only the installed-check
+# stays local (a pure filesystem probe must not force the dependency).
 # ---------------------------------------------------------------------------
 
 def batcher_installed() -> bool:
@@ -96,79 +101,21 @@ def remove_batcher(job: Job) -> bool:
     return True
 
 
-def resolve_segany_plugin_sources(job: Job) -> dict[str, str]:
-    """Local-checkout-first (for active development next to this file: a
-    sibling GIMPSAM/ or gimpsegany/ directory), else download from GitHub."""
-    override = os.environ.get("LAZYGIMP_SEGANY_SRC_DIR")
-    if override and all(os.path.isfile(os.path.join(override, f)) for f in SEGANY_PLUGIN_FILES):
-        return {f: os.path.join(override, f) for f in SEGANY_PLUGIN_FILES}
-    if HERE:
-        for name, _repo, _branch in SEGANY_SOURCES:
-            sibling = os.path.join(HERE, "..", name)
-            if all(os.path.isfile(os.path.join(sibling, f)) for f in SEGANY_PLUGIN_FILES):
-                return {f: os.path.join(sibling, f) for f in SEGANY_PLUGIN_FILES}
-    tmp = tempfile.mkdtemp(prefix="lazygimp-segany-src-")
-    last_err = None
-    for name, repo, branch in SEGANY_SOURCES:
-        try:
-            result = {}
-            for fname in SEGANY_PLUGIN_FILES:
-                dest = os.path.join(tmp, fname)
-                job.log(f"Fetching {fname} from {repo}@{branch}")
-                urllib.request.urlretrieve(f"https://raw.githubusercontent.com/{repo}/{branch}/{fname}", dest)
-                result[fname] = dest
-            return result
-        except Exception as e:
-            last_err = e
-            continue
-    raise RuntimeError(f"could not obtain the SAM plug-in source files: {last_err}")
-
-
 def install_segany_plugin(job: Job) -> bool:
-    dest_dir = gimp_plugins_dir()
-    if not dest_dir:
-        job.log("ERROR: no GIMP plug-ins directory found — install GIMP first.")
-        return False
-    try:
-        sources = resolve_segany_plugin_sources(job)
-    except Exception as e:
-        job.log(f"ERROR: {e}")
-        return False
-    dest = os.path.join(dest_dir, "seganyplugin")
-    shutil.rmtree(dest, ignore_errors=True)
-    os.makedirs(dest, exist_ok=True)
-    for fname, path in sources.items():
-        shutil.copy2(path, dest)
-        os.chmod(os.path.join(dest, fname), 0o755)
-    invalidate_gimp_plugin_cache(job)
-    job.log(f"SAM plug-in installed into {dest} — find it under "
-            "Image → Segment Anything Layers after a GIMP restart")
-    return True
+    from .gimpsam_dep import load
+
+    # Honour the historical override name alongside gimpsam's own.
+    legacy = os.environ.get("LAZYGIMP_SEGANY_SRC_DIR")
+    if legacy and not os.environ.get("GIMPSAM_SRC_DIR"):
+        os.environ["GIMPSAM_SRC_DIR"] = legacy
+    return load().plugin.install_plugin(job, ref=GIMPSAM_REF)
 
 
 def remove_segany_plugin(job: Job) -> bool:
-    d = gimp_plugins_dir()
-    dest = os.path.join(d, "seganyplugin") if d else None
-    if dest and os.path.isdir(dest):
-        shutil.rmtree(dest)
-        invalidate_gimp_plugin_cache(job)
-        job.log(f"Removed {dest}")
-    else:
-        job.log("SAM plug-in was not installed.")
-    return True
+    from .gimpsam_dep import load
+    return load().plugin.remove_plugin(job)
 
 
 def write_segany_plugin_settings(primary: ModelSpec) -> None:
-    d = gimp_plugins_dir()
-    if not d:
-        return
-    plugin_dir = os.path.join(d, "seganyplugin")
-    if not os.path.isdir(plugin_dir):
-        return
-    settings = {
-        "pythonPath": VENV_PYTHON,
-        "checkPtPath": model_path(primary),
-        "modelType": "Auto",
-    }
-    with open(os.path.join(plugin_dir, "segany_settings.json"), "w", encoding="utf-8") as fh:
-        json.dump(settings, fh, indent=2)
+    from .gimpsam_dep import load
+    load().plugin.write_plugin_settings(primary)

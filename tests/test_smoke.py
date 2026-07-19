@@ -16,9 +16,9 @@ class ImportTests(unittest.TestCase):
     def test_every_module_imports(self):
         import importlib
 
-        for mod in ("constants", "models", "hardware", "distro", "gimp_detect",
-                    "job", "plan", "gimp_install", "photogimp", "plugins",
-                    "sam_backend", "sam3", "util", "compat", "cli", "gui"):
+        for mod in ("constants", "gimpsam_dep", "models", "hardware", "distro",
+                    "gimp_detect", "job", "plan", "gimp_install", "photogimp",
+                    "plugins", "sam_backend", "sam3", "util", "compat", "cli", "gui"):
             importlib.import_module(f"lazygimp.{mod}")
 
     def test_gui_is_optional(self):
@@ -42,6 +42,22 @@ class ModelRegistryTests(unittest.TestCase):
         from lazygimp.models import MODEL_BY_KEY
 
         self.assertIn(recommended_model_key(detect_hardware()), MODEL_BY_KEY)
+
+
+class GimpsamDepTests(unittest.TestCase):
+    def test_backend_dir_agrees_with_gimpsam(self):
+        """Both packages must point at the same on-disk backend, or an
+        upgrade would orphan already-downloaded multi-GB models."""
+        from lazygimp.constants import BACKEND_DIR
+        from lazygimp.gimpsam_dep import load
+
+        self.assertEqual(BACKEND_DIR, load().constants.BACKEND_DIR)
+
+    def test_shims_reexport_gimpsam_objects(self):
+        from lazygimp import models
+        from lazygimp.gimpsam_dep import load
+
+        self.assertIs(models.MODEL_REGISTRY, load().models.MODEL_REGISTRY)
 
 
 class CliTests(unittest.TestCase):

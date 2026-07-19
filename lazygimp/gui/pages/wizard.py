@@ -5,7 +5,7 @@ self.plan; nothing here touches disk."""
 from __future__ import annotations
 
 from ...compat import ctk, tk
-from ...constants import GMIC_DOWNLOAD_PAGE, SAM3_HF_PAGE, SAM3_HF_REPO_ID, TORCH_INDEX_URLS
+from ...constants import GMIC_DOWNLOAD_PAGE
 from ...distro import detect_distro
 from ...gimp_detect import find_gimp_binary, find_gimp_command
 from ...gimp_install import appimage_present, gimp_native_installed, gmic_available_on_this_release, gmic_installed, install_gimp_appimage, install_gimp_package_manager, install_gmic_only, remove_gmic_only
@@ -15,8 +15,8 @@ from ...models import MODEL_BY_KEY, MODEL_REGISTRY, ModelSpec, model_installed, 
 from ...photogimp import install_photogimp, photogimp_installed, remove_photogimp, repair_desktop_integration
 from ...plan import InstallPlan, PlannedAction, WizardStep
 from ...plugins import batcher_installed, install_batcher, install_segany_plugin, remove_batcher, remove_segany_plugin, segany_plugin_installed, write_segany_plugin_settings
-from ...sam3 import download_sam3, remove_sam3, sam3_failure_message
-from ...sam_backend import backend_ready, install_sam3_transformers, install_sam_backend, remove_sam_backend, venv_exists, write_sam_info
+from ...sam3 import SAM3_HF_PAGE, SAM3_HF_REPO_ID, download_sam3, remove_sam3, sam3_failure_message
+from ...sam_backend import TORCH_INDEX_URLS, backend_ready, install_sam3_transformers, install_sam_backend, remove_sam_backend, write_sam_info
 from ..dialogs import show_snackbar, themed_confirm, themed_info
 from ..helpers import autowrap_label, rating_widget
 from ..icons import icon_canvas
@@ -1135,7 +1135,8 @@ class WizardPages:
             status_color = SUCCESS if kind == "install" else DANGER
             icon_canvas(line, status_icon, color=status_color, size=20, bg=CARD_BG).pack(side="left", padx=10)
             
-            discard_cmd = lambda: self._wizard_discard_many(keys)
+            def discard_cmd(keys=keys):
+                self._wizard_discard_many(keys)
             self._review_rows_discard_commands.append(discard_cmd)
             
             trash_btn = RoundedButton(line, "", icon="trash", variant="danger", width=40,
