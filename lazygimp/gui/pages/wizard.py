@@ -16,7 +16,7 @@ from ...photogimp import install_photogimp, photogimp_installed, remove_photogim
 from ...plan import InstallPlan, PlannedAction, WizardStep
 from ...plugins import batcher_installed, install_batcher, install_segany_plugin, remove_batcher, remove_segany_plugin, segany_plugin_installed, write_segany_plugin_settings
 from ...sam3 import SAM3_HF_PAGE, SAM3_HF_REPO_ID, download_sam3, remove_sam3, sam3_failure_message
-from ...sam_backend import TORCH_INDEX_URLS, backend_ready, install_sam3_transformers, install_sam_backend, remove_sam_backend, write_sam_info
+from ...sam_backend import TORCH_INDEX_URLS, backend_ready, install_sam_backend, remove_sam_backend, write_sam_info
 from ..dialogs import show_snackbar, themed_confirm, themed_info
 from ..helpers import autowrap_label, rating_widget
 from ..icons import icon_canvas
@@ -802,8 +802,7 @@ class WizardPages:
     def _wizard_render_sam(self, parent):
         setup_install_key = "sam_setup:install"
 
-        model_widgets: list[tuple] = []       # (button, spec, installed)
-        queue_all_buttons: list = []
+
 
         # -- PyTorch Build Selector Card (Compact and Clean) --
         card = RoundedCard(parent)

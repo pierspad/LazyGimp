@@ -126,6 +126,17 @@ chmod +x "${DIST}/lazygimp.pyz"
   --paths "$BUNDLE" \
   --hidden-import tkinter \
   --hidden-import gimpsam \
+  --hidden-import gimpsam.constants \
+  --hidden-import gimpsam.models \
+  --hidden-import gimpsam.hardware \
+  --hidden-import gimpsam.backend \
+  --hidden-import gimpsam.sam3 \
+  --hidden-import gimpsam.plugin \
+  --hidden-import gimpsam.gimp_dirs \
+  --hidden-import gimpsam.compat \
+  --hidden-import gimpsam.job \
+  --hidden-import gimpsam.plan \
+  --hidden-import gimpsam.util \
   --collect-submodules gimpsam \
   --collect-all customtkinter \
   --collect-submodules PIL \
