@@ -199,13 +199,24 @@ class LazyGimpApp(LandingPage, UninstallPage, WizardPages, InstallProgressPage):
         elif self.current_screen == "wizard" and hasattr(self, "wizard_steps"):
             step = self.wizard_steps[self.wizard_index]
             
-            if key in ("right", "return"):
+            if key == "prior":
+                scroller = getattr(self, "_wizard_scroller", None)
+                if scroller:
+                    scroller.page_up()
+                return
+            elif key == "next":
+                scroller = getattr(self, "_wizard_scroller", None)
+                if scroller:
+                    scroller.page_down()
+                return
+            
+            if key in ("right", "return", "down"):
                 if step.key == "review" and key == "return":
                     self._wizard_start_install()
                 elif self._wizard_can_advance():
                     self._wizard_advance()
                 return
-            elif key in ("left", "escape", "backspace"):
+            elif key in ("left", "escape", "backspace", "up"):
                 self._wizard_back()
                 return
             elif key == "s":
@@ -236,46 +247,65 @@ class LazyGimpApp(LandingPage, UninstallPage, WizardPages, InstallProgressPage):
                         handler()
                     
             elif step.key == "sam":
-                if key == "1":
-                    handler = getattr(self, "_wizard_cards", {}).get("sam_model:vit_b")
-                    if handler:
-                        handler()
-                elif key == "2":
-                    handler = getattr(self, "_wizard_cards", {}).get("sam_model:vit_l")
-                    if handler:
-                        handler()
-                elif key == "3":
-                    handler = getattr(self, "_wizard_cards", {}).get("sam_model:vit_h")
-                    if handler:
-                        handler()
-                elif key == "4":
-                    handler = getattr(self, "_wizard_cards", {}).get("sam_model:hiera_tiny")
-                    if handler:
-                        handler()
-                elif key in ("5", "h"):
-                    handler = getattr(self, "_wizard_cards", {}).get("sam3")
-                    if handler:
-                        handler()
-                elif key == "t":
-                    entry = getattr(self, "_hf_token_entry", None)
-                    if entry and entry.winfo_exists():
-                        entry.focus_set()
-                elif key == "p":
-                    combo = getattr(self, "_pytorch_combo", None)
-                    if combo and combo.winfo_exists():
-                        combo.focus_set()
-                        try:
-                            combo._clicked()
-                        except Exception:
-                            pass
-                elif key == "a":
-                    handler = getattr(self, "_wizard_cards", {}).get("queue_all_sam1")
-                    if handler:
-                        handler()
-                elif key == "b":
-                    handler = getattr(self, "_wizard_cards", {}).get("queue_all_sam2")
-                    if handler:
-                        handler()
+                is_shift = (event.state & 0x0001) != 0
+                shift_num = None
+                if key in ("exclam", "1"):
+                    shift_num = 1
+                elif key in ("at", "quotedbl", "2"):
+                    shift_num = 2
+                elif key in ("numbersign", "sterling", "3"):
+                    shift_num = 3
+                elif key in ("dollar", "4"):
+                    shift_num = 4
+                
+                if is_shift and shift_num is not None:
+                    active_fam = getattr(self, "_sam_expanded_family", "SAM1")
+                    if active_fam == "SAM1":
+                        model_labels = ["vit_b", "vit_l", "vit_h"]
+                        if shift_num <= len(model_labels):
+                            handler = getattr(self, "_wizard_cards", {}).get(f"sam_model:{model_labels[shift_num - 1]}")
+                            if handler:
+                                handler()
+                    elif active_fam == "SAM2":
+                        model_labels = ["hiera_tiny", "hiera_small", "hiera_base_plus", "hiera_large"]
+                        if shift_num <= len(model_labels):
+                            handler = getattr(self, "_wizard_cards", {}).get(f"sam_model:{model_labels[shift_num - 1]}")
+                            if handler:
+                                handler()
+                    elif active_fam == "SAM3":
+                        if shift_num == 1:
+                            handler = getattr(self, "_wizard_cards", {}).get("sam3")
+                            if handler:
+                                handler()
+                    return
+
+                if not is_shift:
+                    if key == "1":
+                        self.show_sam_category("SAM1")
+                    elif key == "2":
+                        self.show_sam_category("SAM2")
+                    elif key == "3":
+                        self.show_sam_category("SAM3")
+                    elif key == "t":
+                        entry = getattr(self, "_hf_token_entry", None)
+                        if entry and entry.winfo_exists():
+                            entry.focus_set()
+                    elif key == "p":
+                        combo = getattr(self, "_pytorch_combo", None)
+                        if combo and combo.winfo_exists():
+                            combo.focus_set()
+                            try:
+                                combo._clicked()
+                            except Exception:
+                                pass
+                    elif key == "a":
+                        handler = getattr(self, "_wizard_cards", {}).get("queue_all_sam1")
+                        if handler:
+                            handler()
+                    elif key == "b":
+                        handler = getattr(self, "_wizard_cards", {}).get("queue_all_sam2")
+                        if handler:
+                            handler()
                     
             elif step.key == "review":
                 if key == "space":

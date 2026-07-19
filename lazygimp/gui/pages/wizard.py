@@ -224,6 +224,7 @@ class WizardPages:
             if step.key in ("sam", "review"):
                 scroller = ScrollableFrame(new_page)
                 scroller.pack(fill="both", expand=True, padx=(26, 6), pady=(6, 0))
+                self._wizard_scroller = scroller
                 body_parent = scroller.inner
             else:
                 body = tk.Frame(new_page, bg=BG)
@@ -359,6 +360,7 @@ class WizardPages:
                 if step.key in ("sam", "review"):
                     scroller = ScrollableFrame(page_frame)
                     scroller.pack(fill="both", expand=True, padx=(26, 6), pady=(6, 0))
+                    self._wizard_scroller = scroller
                     body_parent = scroller.inner
                 else:
                     body = tk.Frame(page_frame, bg=BG)
@@ -617,7 +619,8 @@ class WizardPages:
         icon_color = SUCCESS if (native or pm_selected) else TEXT_MUTED
         icon_canvas(body1, distro_icon, color=icon_color, size=64, bg=pm_card_bg).pack(pady=(20, 10))
         
-        tk.Label(body1, text="Package Manager (1)", bg=pm_card_bg, fg=TEXT, font=F_CARD_TITLE).pack(pady=(0, 4))
+        tk.Label(body1, text="1", bg=pm_card_bg, fg=ACCENT, font=F_BODY_B).pack(pady=(0, 2))
+        tk.Label(body1, text="Package Manager", bg=pm_card_bg, fg=TEXT, font=F_CARD_TITLE).pack(pady=(0, 4))
         
         distro_name = distro.capitalize() if distro else "Linux"
         tk.Label(body1, text=f"Use system package manager ({distro_name})", bg=pm_card_bg, fg=TEXT_MUTED, font=F_SMALL).pack(pady=(0, 15))
@@ -654,7 +657,8 @@ class WizardPages:
         icon_color2 = SUCCESS if (appimg or ai_selected) else TEXT_MUTED
         icon_canvas(body2, "box", color=icon_color2, size=64, bg=ai_card_bg).pack(pady=(20, 10))
         
-        tk.Label(body2, text="AppImage (2)", bg=ai_card_bg, fg=TEXT, font=F_CARD_TITLE).pack(pady=(0, 4))
+        tk.Label(body2, text="2", bg=ai_card_bg, fg=ACCENT, font=F_BODY_B).pack(pady=(0, 2))
+        tk.Label(body2, text="AppImage", bg=ai_card_bg, fg=TEXT, font=F_CARD_TITLE).pack(pady=(0, 4))
         
         tk.Label(body2, text="Standalone AppImage in Applications folder", bg=ai_card_bg, fg=TEXT_MUTED, font=F_SMALL).pack(pady=(0, 15))
         
@@ -859,15 +863,43 @@ class WizardPages:
 
         rec_key = recommended_model_key(self.hw)
 
-        def render_family(family_name, family_key, default_expanded):
-            fam_card = RoundedCard(parent)
+        if not hasattr(self, "_sam_expanded_family"):
+            self._sam_expanded_family = "SAM1"
+
+        def show_sam_category(fam_key):
+            if self._sam_expanded_family != fam_key:
+                self._sam_expanded_family = fam_key
+                rebuild_sam_families()
+
+        self.show_sam_category = show_sam_category
+
+        self._sam_families_frame = tk.Frame(parent, bg=BG)
+        self._sam_families_frame.pack(fill="x", expand=True)
+
+        rec_key = recommended_model_key(self.hw)
+
+        def queue_all(family):
+            missing = [m for m in MODEL_REGISTRY if m.family == family and not model_installed(m)]
+            if not missing:
+                themed_info(self.root, "Nothing to do", f"All {family} models are already installed.")
+                return
+            for spec in missing:
+                key = f"sam_model:{spec.key}:install"
+                if not self.plan.has(key):
+                    self.plan.add(PlannedAction(key, f"Download {spec.label}", "install",
+                                                 self._sam_model_install_run(spec)))
+            sync_sam_setup_in_plan()
+            refresh_sam_page()
+
+        def render_family_dynamic(parent_w, family_name, family_key, is_expanded, on_header_click):
+            fam_card = RoundedCard(parent_w)
             fam_card.pack(fill="x", pady=(0, 10))
             
             # Collapsible header
             head = tk.Frame(fam_card.body, bg=CARD_BG)
             head.pack(fill="x", pady=(0, 4))
             
-            arrow_var = tk.StringVar(value="▼" if default_expanded else "▶")
+            arrow_var = tk.StringVar(value="▼" if is_expanded else "▶")
             arrow_lbl = tk.Label(head, textvariable=arrow_var, bg=CARD_BG, fg=ACCENT, font=F_SECTION)
             arrow_lbl.pack(side="left", padx=(0, 6))
             
@@ -877,25 +909,18 @@ class WizardPages:
             queue_all_btn = RoundedButton(head, "Queue all missing", icon="install", variant="secondary",
                                            width=170)
             queue_all_btn.pack(side="right")
-            queue_all_buttons.append(queue_all_btn)
+            queue_all_btn.command = lambda: queue_all(family_key)
+            self._wizard_cards[f"queue_all_{family_key.lower()}"] = queue_all_btn.command
             
             # Container for models
             container = tk.Frame(fam_card.body, bg=CARD_BG)
-            if default_expanded:
+            if is_expanded:
                 container.pack(fill="x", pady=(4, 0))
                 
             # Toggle logic
-            def toggle(event=None):
-                if container.winfo_viewable():
-                    container.pack_forget()
-                    arrow_var.set("▶")
-                else:
-                    container.pack(fill="x", pady=(4, 0))
-                    arrow_var.set("▼")
-            
-            arrow_lbl.bind("<Button-1>", toggle)
-            title_lbl.bind("<Button-1>", toggle)
-            head.bind("<Button-1>", toggle)
+            arrow_lbl.bind("<Button-1>", lambda e: on_header_click())
+            title_lbl.bind("<Button-1>", lambda e: on_header_click())
+            head.bind("<Button-1>", lambda e: on_header_click())
             for w in (arrow_lbl, title_lbl, head):
                 try:
                     w.configure(cursor="hand2")
@@ -966,41 +991,37 @@ class WizardPages:
                 row._command = make_toggle_cmd()
                 # Expose keyboard shortcut mapping key to app.py
                 self._wizard_cards[f"sam_model:{spec.label}"] = row._command
-                model_widgets.append((row, right_canvas, spec, installed))
+                self._sam_model_widgets.append((row, right_canvas, spec, installed))
                 row.finalize()
             fam_card.finalize()
-            return queue_all_btn
 
-        def queue_all(family):
-            missing = [m for m in MODEL_REGISTRY if m.family == family and not model_installed(m)]
-            if not missing:
-                themed_info(self.root, "Nothing to do", f"All {family} models are already installed.")
-                return
-            for spec in missing:
-                key = f"sam_model:{spec.key}:install"
-                if not self.plan.has(key):
-                    self.plan.add(PlannedAction(key, f"Download {spec.label}", "install",
-                                                 self._sam_model_install_run(spec)))
-            sync_sam_setup_in_plan()
+        def rebuild_sam_families():
+            for w in self._sam_families_frame.winfo_children():
+                w.destroy()
+            self._sam_model_widgets = []
+            
+            all_families = [("SAM 1", "SAM1"), ("SAM 2", "SAM2"), ("SAM 3", "SAM3")]
+            expanded_key = self._sam_expanded_family
+            ordered = [item for item in all_families if item[1] == expanded_key] + \
+                      [item for item in all_families if item[1] != expanded_key]
+                      
+            for name, key in ordered:
+                is_exp = (key == expanded_key)
+                if key == "SAM3":
+                    self._wizard_render_sam3_dynamic(self._sam_families_frame, is_exp,
+                                                     on_toggle=lambda: (sync_sam_setup_in_plan(), refresh_sam_page()),
+                                                     on_header_click=lambda: show_sam_category("SAM3"))
+                else:
+                    render_family_dynamic(self._sam_families_frame, name, key, is_exp,
+                                          on_header_click=lambda k=key: show_sam_category(k))
             refresh_sam_page()
 
-        # Render SAM 2 first (expanded by default)
-        qbtn_sam2 = render_family("SAM 2", "SAM2", True)
-        
-        # Render SAM 3.1 second (expanded by default)
-        sam3_widgets = self._wizard_render_sam3(parent, lambda: True, on_toggle=lambda: (sync_sam_setup_in_plan(), refresh_sam_page()))
-        
-        # Render SAM 1 last (collapsed by default)
-        qbtn_sam1 = render_family("SAM 1", "SAM1", False)
-
-        qbtn_sam2.command = lambda: queue_all("SAM2")
-        self._wizard_cards["queue_all_sam2"] = qbtn_sam2.command
-        
-        qbtn_sam1.command = lambda: queue_all("SAM1")
-        self._wizard_cards["queue_all_sam1"] = qbtn_sam1.command
-
         def refresh_sam_page():
-            for card, rcanvas, spec, installed in model_widgets:
+            for card, rcanvas, spec, installed in self._sam_model_widgets:
+                if spec.key == "sam3":
+                    if hasattr(card, "_sam3_refresher"):
+                        card._sam3_refresher(model_installed(spec))
+                    continue
                 ikey, rkey = f"sam_model:{spec.key}:install", f"sam_model:{spec.key}:remove"
                 q = self.plan.has(rkey) if installed else self.plan.has(ikey)
                 
@@ -1023,27 +1044,13 @@ class WizardPages:
                 from ..icons import blit_icon
                 blit_icon(rcanvas, 14, 14, rik, color=ric, size=28)
                 card._update_colors()
-                
-            for qbtn in queue_all_buttons:
-                qbtn.set_enabled(True)
-            sam3_widgets.refresh(True)
 
         self._refresh_sam_page_fn = refresh_sam_page
-        refresh_sam_page()
+        rebuild_sam_families()
 
     # -- SAM 3.1 (gated on Hugging Face) -------------------------------------
 
-    class _Sam3Widgets:
-        """Tiny bundle returned so the SAM page's refresh_sam_page() can
-        update SAM3's enabled state (it depends on sam_present_after(),
-        which the setup card owns) without rebuilding anything."""
-        def __init__(self, refresh_fn):
-            self._refresh_fn = refresh_fn
-
-        def refresh(self, present: bool):
-            self._refresh_fn(present)
-
-    def _wizard_render_sam3(self, parent, sam_present_after, on_toggle=None):
+    def _wizard_render_sam3_dynamic(self, parent, is_expanded, on_toggle, on_header_click):
         spec = MODEL_BY_KEY["sam3"]
         installed = model_installed(spec)
         card = RoundedCard(parent)
@@ -1054,7 +1061,7 @@ class WizardPages:
         head = tk.Frame(body, bg=CARD_BG)
         head.pack(fill="x", pady=(0, 4))
         
-        arrow_var = tk.StringVar(value="▼")
+        arrow_var = tk.StringVar(value="▼" if is_expanded else "▶")
         arrow_lbl = tk.Label(head, textvariable=arrow_var, bg=CARD_BG, fg=ACCENT, font=F_SECTION)
         arrow_lbl.pack(side="left", padx=(0, 6))
         
@@ -1062,19 +1069,12 @@ class WizardPages:
         title_lbl.pack(side="left")
         
         container = tk.Frame(body, bg=CARD_BG)
-        container.pack(fill="x", pady=(4, 0))
-        
-        def toggle_collapse(event=None):
-            if container.winfo_viewable():
-                container.pack_forget()
-                arrow_var.set("▶")
-            else:
-                container.pack(fill="x", pady=(4, 0))
-                arrow_var.set("▼")
-                
-        arrow_lbl.bind("<Button-1>", toggle_collapse)
-        title_lbl.bind("<Button-1>", toggle_collapse)
-        head.bind("<Button-1>", toggle_collapse)
+        if is_expanded:
+            container.pack(fill="x", pady=(4, 0))
+            
+        arrow_lbl.bind("<Button-1>", lambda e: on_header_click())
+        title_lbl.bind("<Button-1>", lambda e: on_header_click())
+        head.bind("<Button-1>", lambda e: on_header_click())
         for w in (arrow_lbl, title_lbl, head):
             try:
                 w.configure(cursor="hand2")
@@ -1106,26 +1106,14 @@ class WizardPages:
         row1.pack(fill="x", pady=(0, 10))
         RoundedButton(row1, "Request access on Hugging Face", icon="link", variant="secondary", width=270,
                       command=lambda: webbrowser.open(SAM3_HF_PAGE)).pack(side="left")
-        transformers_key = "sam3:transformers"
-        transformers_btn = RoundedButton(row1, "Install/upgrade transformers", icon="box", variant="success",
-                                          width=230)
-        transformers_btn.pack(side="left", padx=8)
-
-        def toggle_transformers():
-            self.plan.toggle(PlannedAction(transformers_key, "Install/upgrade transformers", "install",
-                                            lambda job: install_sam3_transformers(job)))
-            transformers_btn.set_text("Install/upgrade transformers"
-                                       + (" ✓" if self.plan.has(transformers_key) else ""))
-
-        transformers_btn.command = toggle_transformers
 
         row2 = tk.Frame(container, bg=CARD_BG)
         row2.pack(fill="x")
         tk.Label(row2, text="HF token", bg=CARD_BG, fg=TEXT, font=F_BODY_B).pack(side="left")
         hf_entry = ctk.CTkEntry(row2, textvariable=self.hf_token_var, show="•", width=300, height=36,
-                                corner_radius=10, font=F_BODY, fg_color=FIELD_BG,
-                                border_color=CARD_BORDER, border_width=1, text_color=TEXT)
-        hf_entry.pack(side="left", padx=8)
+                                corner_radius=10, fg_color=FIELD_BG, border_color=CARD_BORDER,
+                                border_width=1, text_color=TEXT)
+        hf_entry.pack(side="left", padx=12)
         self._hf_token_entry = hf_entry
 
         if installed:
@@ -1133,17 +1121,16 @@ class WizardPages:
             sam3_btn.pack(side="left")
 
             def toggle_sam3():
-                self.plan.toggle(PlannedAction(remove_key, "Remove SAM 3.1", "remove",
+                self.plan.toggle(PlannedAction(remove_key, "Remove SAM 3", "remove",
                                                 lambda job: remove_sam3(job)))
-                sam3_btn.set_text("Remove" + (" ✓" if self.plan.has(remove_key) else ""))
-                if on_toggle:
-                    on_toggle()
+                on_toggle()
 
             self._wizard_cards["sam3"] = toggle_sam3
             sam3_btn.command = toggle_sam3
 
-            def refresh(_present: bool):
-                pass
+            def refresh(present: bool):
+                q = self.plan.has(remove_key)
+                sam3_btn.set_text("Remove" + (" ✓" if q else ""))
         else:
             sam3_btn = RoundedButton(
                 row2, "Add to plan", icon="install", variant="success", width=140,
@@ -1154,11 +1141,9 @@ class WizardPages:
                 return bool(self.hf_token_var.get().strip())
 
             def toggle_sam3():
-                self.plan.toggle(PlannedAction(install_key, "Download SAM 3.1", "install",
+                self.plan.toggle(PlannedAction(install_key, "Download SAM 3", "install",
                                                 lambda job: self._run_sam3_download(job)))
-                sam3_btn.set_text("Add to plan" + (" ✓" if self.plan.has(install_key) else ""))
-                if on_toggle:
-                    on_toggle()
+                on_toggle()
 
             self._wizard_cards["sam3"] = toggle_sam3
             sam3_btn.command = toggle_sam3
@@ -1166,20 +1151,29 @@ class WizardPages:
             def refresh(present: bool):
                 queued = self.plan.has(install_key)
                 sam3_btn.set_enabled(queued or token_entered())
+                sam3_btn.set_text("Add to plan" + (" ✓" if queued else ""))
 
-            trace_id = self.hf_token_var.trace_add("write", lambda *_a: refresh(sam_present_after()))
+        def on_token_changed(*_args):
+            if not installed and self.plan.has(install_key):
+                self.plan.add(PlannedAction(install_key, "Download SAM 3", "install",
+                                             lambda job: self._run_sam3_download(job)))
+            refresh(True)
 
-            def _drop_token_trace(_e=None, tid=trace_id):
-                try:
-                    self.hf_token_var.trace_remove("write", tid)
-                except (tk.TclError, ValueError):
-                    pass
+        trace_id = self.hf_token_var.trace_add("write", on_token_changed)
 
-            sam3_btn.bind("<Destroy>", _drop_token_trace)
+        def _drop_token_trace(_e=None, tid=trace_id):
+            try:
+                self.hf_token_var.trace_remove("write", tid)
+            except (tk.TclError, ValueError):
+                pass
 
-        refresh(sam_present_after())
+        sam3_btn.bind("<Destroy>", _drop_token_trace)
+
+        self._sam_model_widgets.append((card, None, spec, installed))
+        card._sam3_refresher = refresh
+
+        refresh(True)
         card.finalize()
-        return self._Sam3Widgets(refresh)
 
     def _run_sam3_download(self, job: Job):
         token = self.hf_token_var.get().strip()
