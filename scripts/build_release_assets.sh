@@ -57,31 +57,46 @@ copy_first() { # <dest-name> <candidate>...
 copy_first README.md docs/README.md README.md
 copy_first LICENSE docs/LICENSE LICENSE
 
-# --- vendor the pinned gimpsam package into the bundle ---------------------
-# LazyGimp is an aggregator: everything SAM comes from pierspad/GIMPSAM at
-# the exact GIMPSAM_REF pinned in lazygimp/constants.py. A sibling checkout
-# wins (dev builds install what's on disk); otherwise the pinned source
-# zipball is fetched — so a release always ships a known GIMPSAM state.
-GIMPSAM_REF="$(python3 -c "
-import re, pathlib
-text = pathlib.Path('${ROOT}/lazygimp/constants.py').read_text()
-print(re.search(r'GIMPSAM_REF = \"([^\"]+)\"', text).group(1))")"
+# --- vendor the gimpsam package into the bundle ----------------------------
+# LazyGimp is an aggregator: everything SAM comes from pierspad/GIMPSAM.
+# A sibling checkout wins (dev builds install what's on disk); otherwise
+# the LATEST official GitHub release's gimpsam-src.zip asset — built
+# specifically to be consumed here — is fetched, with the main zipball as
+# the bootstrap fallback for before that first release exists. Either
+# way, a LazyGimp release bundle ships its own gimpsam copy and needs no
+# network to resolve it at runtime.
 SIBLING="${ROOT}/../GIMPSAM"
+vendor_from() { # <dir containing gimpsam/ + plug-in files>
+  cp -a "$1/gimpsam" "$1/seganyplugin.py" "$1/seganybridge.py" "$BUNDLE/"
+}
 if [[ -f "${SIBLING}/gimpsam/__init__.py" ]]; then
   echo "vendoring gimpsam from sibling checkout ${SIBLING}"
-  cp -a "${SIBLING}/gimpsam" \
-        "${SIBLING}/seganyplugin.py" "${SIBLING}/seganybridge.py" "$BUNDLE/"
+  vendor_from "$SIBLING"
 else
-  echo "vendoring gimpsam from pierspad/GIMPSAM@${GIMPSAM_REF}"
   GS_TMP="${STAGE}/gimpsam-src"
   mkdir -p "$GS_TMP"
-  curl -fsSL "https://github.com/pierspad/GIMPSAM/archive/${GIMPSAM_REF}.zip" \
-    -o "${GS_TMP}/gimpsam.zip"
+  GS_URL="$(curl -fsSL -H 'User-Agent: LazyGimp-build' \
+      "https://api.github.com/repos/pierspad/GIMPSAM/releases/latest" 2>/dev/null \
+    | python3 -c "
+import json, sys
+try:
+    release = json.load(sys.stdin)
+except Exception:
+    sys.exit(0)
+for asset in release.get('assets', []):
+    if asset.get('name') == 'gimpsam-src.zip':
+        print(asset['browser_download_url'])
+        break")"
+  if [[ -n "$GS_URL" ]]; then
+    echo "vendoring gimpsam from the latest GIMPSAM release: ${GS_URL}"
+    curl -fsSL "$GS_URL" -o "${GS_TMP}/gimpsam.zip"
+  else
+    echo "vendoring gimpsam from pierspad/GIMPSAM@main (no release asset yet)"
+    curl -fsSL "https://github.com/pierspad/GIMPSAM/archive/main.zip" -o "${GS_TMP}/gimpsam.zip"
+  fi
   (cd "$GS_TMP" && unzip -q gimpsam.zip)
-  GS_ROOT="$(dirname "$(find "$GS_TMP" -path '*/gimpsam/__init__.py' | head -1)")"
-  GS_ROOT="$(dirname "$GS_ROOT")"
-  cp -a "${GS_ROOT}/gimpsam" \
-        "${GS_ROOT}/seganyplugin.py" "${GS_ROOT}/seganybridge.py" "$BUNDLE/"
+  GS_ROOT="$(dirname "$(dirname "$(find "$GS_TMP" -path '*/gimpsam/__init__.py' | head -1)")")"
+  vendor_from "$GS_ROOT"
 fi
 
 find "$BUNDLE" -name '__pycache__' -type d -exec rm -rf {} +

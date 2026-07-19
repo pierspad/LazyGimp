@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .constants import BATCHER_RELEASE_TAG, BATCHER_REPO, GIMPSAM_REF
+from .constants import BATCHER_RELEASE_TAG, BATCHER_REPO
 from .gimp_detect import gimp_plugins_dir, invalidate_gimp_plugin_cache
 from .job import Job
 from .util import fetch_latest_github_release_assets
@@ -20,10 +20,13 @@ import zipfile
 # existence (its name IS the record: only LazyGimp ever creates a
 # "batcher"/"seganyplugin" folder there).
 #
-# The SAM plug-in itself is owned by the gimpsam package: the functions
-# below just forward to it at the pinned GIMPSAM_REF, keeping their old
-# names so the GUI/CLI call sites never changed. Only the installed-check
-# stays local (a pure filesystem probe must not force the dependency).
+# The SAM plug-in itself is owned by the gimpsam package (resolved from
+# GIMPSAM's latest official release by gimpsam_dep): the functions below
+# just forward to it, keeping their old names so the GUI/CLI call sites
+# never changed. The plug-in files ship inside the resolved bundle, next
+# to the package, so installation never separately hits the network.
+# Only the installed-check stays local (a pure filesystem probe must not
+# force the dependency).
 # ---------------------------------------------------------------------------
 
 def batcher_installed() -> bool:
@@ -108,7 +111,7 @@ def install_segany_plugin(job: Job) -> bool:
     legacy = os.environ.get("LAZYGIMP_SEGANY_SRC_DIR")
     if legacy and not os.environ.get("GIMPSAM_SRC_DIR"):
         os.environ["GIMPSAM_SRC_DIR"] = legacy
-    return load().plugin.install_plugin(job, ref=GIMPSAM_REF)
+    return load().plugin.install_plugin(job)
 
 
 def remove_segany_plugin(job: Job) -> bool:

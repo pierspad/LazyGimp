@@ -42,13 +42,17 @@ BATCHER_REPO = "kamilburda/batcher"
 BATCHER_RELEASE_TAG = "1.2.9"
 
 # Everything SAM (model registry, torch indexes, venv backend, plug-in
-# files) lives in the gimpsam package — pierspad/GIMPSAM — pinned here to
-# an exact ref so a LazyGimp release always ships/downloads a known
-# GIMPSAM state, never "whatever main is today". Bump deliberately:
-# after each GIMPSAM release, point this at its tag (e.g. "v2.0.0").
-# See lazygimp/gimpsam_dep.py for the full resolution order.
+# files) lives in the gimpsam package — pierspad/GIMPSAM. LazyGimp takes
+# it from that repo's LATEST official (non-prerelease) GitHub release,
+# whose gimpsam-src.zip asset is built specifically to be consumed here:
+# the package plus the plug-in files, resolvable fully offline once
+# extracted. See lazygimp/gimpsam_dep.py for the full resolution order.
+# GIMPSAM_FALLBACK_REF only matters before GIMPSAM's first new-style
+# release exists (no asset to download yet) — then the source zipball of
+# this ref is used instead.
 GIMPSAM_REPO = "pierspad/GIMPSAM"
-GIMPSAM_REF = "261719725bf10398df59e5ed861f4ac63cf3500c"
+GIMPSAM_SRC_ASSET = "gimpsam-src.zip"
+GIMPSAM_FALLBACK_REF = "main"
 
 GIMP_VERSIONS_JSON_URL = "https://www.gimp.org/gimp_versions.json"
 GIMP_DOWNLOAD_MIRROR = "https://download.gimp.org/gimp"

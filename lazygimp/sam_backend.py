@@ -1,5 +1,5 @@
 """Thin re-export — the SAM Python backend (venv, PyTorch, checkpoints)
-lives in the gimpsam package (pierspad/GIMPSAM, pinned via GIMPSAM_REF);
+lives in the gimpsam package (pierspad/GIMPSAM, resolved from its latest release by gimpsam_dep);
 LazyGimp only aggregates it. Import surface kept identical so every
 existing call site still works. gimpsam duck-types the Job it receives,
 so LazyGimp's own Job (with its GUI/pty extras) drops straight in."""

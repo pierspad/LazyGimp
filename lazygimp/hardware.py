@@ -1,6 +1,6 @@
 """Thin re-export — hardware detection (used only to recommend a SAM
 model and PyTorch wheel index) lives in the gimpsam package
-(pierspad/GIMPSAM, pinned via GIMPSAM_REF); LazyGimp only aggregates it.
+(pierspad/GIMPSAM, resolved from its latest release by gimpsam_dep); LazyGimp only aggregates it.
 Import surface kept identical so every existing call site still works."""
 
 from __future__ import annotations

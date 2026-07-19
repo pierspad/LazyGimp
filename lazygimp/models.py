@@ -1,5 +1,5 @@
 """Thin re-export — the SAM model registry lives in the gimpsam package
-(pierspad/GIMPSAM, pinned via GIMPSAM_REF); LazyGimp only aggregates it.
+(pierspad/GIMPSAM, resolved from its latest release by gimpsam_dep); LazyGimp only aggregates it.
 Import surface kept identical so every existing call site still works."""
 
 from __future__ import annotations
