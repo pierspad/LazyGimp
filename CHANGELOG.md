@@ -1,3 +1,9 @@
+## [2.0.0-dev.4](https://github.com/pierspad/LazyGimp/compare/v2.0.0-dev.3...v2.0.0-dev.4) (2026-07-19)
+
+### 🐛 Bug Fixes
+
+* GIMP prereq cards use (1)/(2) in TEXT color; SAM families build once and repack for flicker-free toggling; SAM headers in TEXT color with (N) shortcuts; model shortcuts show [Shift N] ([9d51e73](https://github.com/pierspad/LazyGimp/commit/9d51e73a1a50aadeb2d50e7e2ac0357abe55abeb))
+
 ## [2.0.0-dev.3](https://github.com/pierspad/LazyGimp/compare/v2.0.0-dev.2...v2.0.0-dev.3) (2026-07-19)
 
 ### ✨ Features
