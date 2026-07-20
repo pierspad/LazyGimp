@@ -96,7 +96,16 @@ class WizardPages:
         self._review_rows_discard_commands = []
         self._wizard_page_cache = {}
         self._component_card_refreshers = []
-        self._render_wizard_step()
+
+        # Capture the landing frame (if any) for the slide-in animation.
+        # landing.py stores the current landing wrap in self._landing_frame.
+        landing_frame = getattr(self, "_landing_frame", None)
+        if landing_frame and landing_frame.winfo_exists():
+            # Build the wizard shell *inside* root_frame (alongside the landing
+            # frame) without destroying anything yet, then animate.
+            self._render_wizard_step(animate_from=landing_frame)
+        else:
+            self._render_wizard_step()
         self.root.after(100, self._pre_render_hidden_pages)
 
     def _build_wizard_steps(self) -> list[WizardStep]:
@@ -129,11 +138,24 @@ class WizardPages:
             if len(self.plan) and not themed_confirm(
                     self.root, "Leave setup", "Discard your selections and go back to the start screen?"):
                 return
+            # Build the landing frame *without* destroying the wizard frame yet,
+            # so both coexist during the slide animation.
+            wizard_frame = self._current_wizard_frame
             self._current_wizard_frame = None
-            self.show_landing()
+            self._show_landing_over(wizard_frame)
             return
         self.wizard_index -= 1
         self._render_wizard_step()
+
+    def _show_landing_over(self, wizard_frame):
+        """Build a new landing frame alongside wizard_frame (without
+        destroying it), animate the slide, then complete teardown."""
+        self.show_landing(_preserve=wizard_frame)
+        landing_frame = getattr(self, "_landing_frame", None)
+        if wizard_frame and wizard_frame.winfo_exists() and landing_frame and landing_frame.winfo_exists():
+            self._animate_slide_full(wizard_frame, landing_frame, direction="backward",
+                                     on_done=lambda: None)
+
 
     def _wizard_jump_to_step(self, step_key: str):
         if getattr(self, "_wizard_animating", False):
@@ -164,13 +186,17 @@ class WizardPages:
         else:
             self._refresh_wizard_body()
 
-    def _render_wizard_step(self):
+    def _render_wizard_step(self, animate_from=None):
         self.current_screen = "wizard"
         step = self.wizard_steps[self.wizard_index]
 
         # 1. Initialize outer skeleton if needed
         if not self._current_wizard_frame or not self._current_wizard_frame.winfo_exists():
+            # Only destroy non-landing children; if animate_from is provided
+            # we keep that frame alive for the slide animation.
             for w in self.root_frame.winfo_children():
+                if animate_from and w is animate_from:
+                    continue
                 w.destroy()
             
             outer = tk.Frame(self.root_frame, bg=BG)
@@ -256,9 +282,20 @@ class WizardPages:
                 w.destroy()
             self._wizard_render_review(body_parent)
 
-        # 5. Slide animation inside the middle frame
+        # 5. Slide animation inside the middle frame (step ↔ step) or from
+        #    an external frame (landing → wizard via animate_from)
         old_page = self._active_page_frame
-        if old_page and old_page.winfo_exists():
+        if animate_from and animate_from.winfo_exists():
+            # Landing → wizard: slide the entire wizard shell in from below.
+            # The wizard shell was placed at rely=0 above, so push it down
+            # first then animate it up while the landing slides away.
+            outer = self._current_wizard_frame
+            self._animate_slide_full(animate_from, outer, direction="forward",
+                                     on_done=lambda: None)
+            # Place the inner step page immediately (no inner slide needed).
+            new_page.place(relx=0, rely=0, relwidth=1, relheight=1)
+            self._active_page_frame = new_page
+        elif old_page and old_page.winfo_exists():
             direction = "forward" if self.wizard_index > self._prev_wizard_index else "backward"
             self._animate_slide(old_page, new_page, direction)
         else:
@@ -278,6 +315,60 @@ class WizardPages:
             self._active_page_frame = new_page
 
         self._prev_wizard_index = self.wizard_index
+
+    def _animate_slide_full(self, old_frame, new_frame, direction, on_done):
+        """Animate a full-window slide between two root-level frames.
+        Used for landing ↔ wizard transitions."""
+        self._wizard_animating = True
+        steps = 15
+        interval = 12
+
+        if direction == "forward":
+            start_rely_new = 1.0
+        else:
+            start_rely_new = -1.0
+
+        new_frame.place(relx=0, rely=start_rely_new, relwidth=1, relheight=1)
+        new_frame.lift()
+
+        def ease_out(t):
+            return 1.0 - (1.0 - t) * (1.0 - t)
+
+        def step(i):
+            if not self.root.winfo_exists():
+                self._wizard_animating = False
+                return
+            alive_old = old_frame.winfo_exists()
+            alive_new = new_frame.winfo_exists()
+            if not alive_old or not alive_new:
+                self._wizard_animating = False
+                return
+
+            t = i / steps
+            progress = ease_out(t)
+
+            if direction == "forward":
+                curr_rely_old = -progress
+                curr_rely_new = 1.0 - progress
+            else:
+                curr_rely_old = progress
+                curr_rely_new = -1.0 + progress
+
+            old_frame.place(relx=0, rely=curr_rely_old, relwidth=1, relheight=1)
+            new_frame.place(relx=0, rely=curr_rely_new, relwidth=1, relheight=1)
+
+            if i < steps:
+                self.root.after(interval, lambda: step(i + 1))
+            else:
+                if old_frame.winfo_exists():
+                    old_frame.destroy()
+                if new_frame.winfo_exists():
+                    new_frame.place(relx=0, rely=0, relwidth=1, relheight=1)
+                self._wizard_animating = False
+                on_done()
+
+        step(1)
+
 
     def _animate_slide(self, old_page, new_page, direction):
         self._wizard_animating = True
@@ -862,8 +953,10 @@ class WizardPages:
 
         rec_key = recommended_model_key(self.hw)
 
+        # Open the family that contains the recommended model on first visit.
         if not hasattr(self, "_sam_expanded_family"):
-            self._sam_expanded_family = "SAM1"
+            rec_family = MODEL_BY_KEY[rec_key].family if rec_key in MODEL_BY_KEY else "SAM1"
+            self._sam_expanded_family = rec_family
 
         def show_sam_category(fam_key):
             if self._sam_expanded_family != fam_key:
@@ -906,7 +999,51 @@ class WizardPages:
             
             title_lbl = tk.Label(head, text=family_name, bg=CARD_BG, fg=TEXT, font=F_SECTION)
             title_lbl.pack(side="left")
-            
+
+            # --- Header badges (visible when collapsed) ---
+            # Badge frame sits between title and the right-aligned queue-all button.
+            badge_frame = tk.Frame(head, bg=CARD_BG)
+            badge_frame.pack(side="left", padx=(10, 0))
+
+            # ★ Recommended label — shown only if this family contains rec_key
+            family_has_rec = any(m.key == rec_key for m in MODEL_REGISTRY if m.family == family_key)
+            rec_badge_lbl = None
+            if family_has_rec:
+                rec_badge_lbl = tk.Label(badge_frame, text="★ Recommended",
+                                     bg=CARD_BG, fg=ACCENT, font=F_SMALL_B)
+                rec_badge_lbl.pack(side="left", padx=(0, 8))
+
+            # One status dot per model in this family.
+            family_models_list = [m for m in MODEL_REGISTRY if m.family == family_key]
+            dot_labels: list[tk.Label] = []
+            for _ in family_models_list:
+                dot = tk.Label(badge_frame, text="●", bg=CARD_BG, font=F_SMALL_B)
+                dot.pack(side="left", padx=1)
+                dot_labels.append(dot)
+
+            def update_header_badges(is_expanded: bool):
+                """Show/hide badges by colouring them to match the background."""
+                # Recommended star: always accent when visible, hidden when expanded
+                if rec_badge_lbl is not None:
+                    rec_badge_lbl.configure(fg=CARD_BG if is_expanded else ACCENT)
+                # Status dots
+                for dot, spec in zip(dot_labels, family_models_list):
+                    if is_expanded:
+                        dot.configure(fg=CARD_BG)
+                        continue
+                    inst = model_installed(spec)
+                    ikey, rkey2 = f"sam_model:{spec.key}:install", f"sam_model:{spec.key}:remove"
+                    queued_install = self.plan.has(ikey)
+                    queued_remove  = self.plan.has(rkey2)
+                    if inst and not queued_remove:
+                        colour = SUCCESS          # installed & kept → solid green
+                    elif queued_install:
+                        colour = ACCENT           # queued for install → accent
+                    else:
+                        colour = CARD_BORDER      # nothing selected → dim
+                    dot.configure(fg=colour)
+
+            # Queue-all button anchored to the right
             queue_all_btn = RoundedButton(head, "Queue all missing", icon="install", variant="secondary",
                                            width=170)
             queue_all_btn.pack(side="right")
@@ -984,6 +1121,7 @@ class WizardPages:
                 "card_widget": fam_card,
                 "arrow_var": arrow_var,
                 "container": container,
+                "update_badges": update_header_badges,
             }
 
         # Build all family cards once (not yet packed)
@@ -1015,6 +1153,9 @@ class WizardPages:
                     fam_info["container"].pack(fill="x", pady=(4, 0))
                 else:
                     fam_info["container"].pack_forget()
+                # Update header badges visibility/colour
+                if "update_badges" in fam_info:
+                    fam_info["update_badges"](is_exp)
             
             refresh_sam_page()
 
@@ -1046,6 +1187,12 @@ class WizardPages:
                 blit_icon(rcanvas, 14, 14, rik, color=ric, size=28)
                 card._update_colors()
 
+            # Also refresh header badges for non-expanded families
+            expanded_key = self._sam_expanded_family
+            for fkey, fam_info in self._sam_family_cards.items():
+                if "update_badges" in fam_info:
+                    fam_info["update_badges"](fkey == expanded_key)
+
         self._refresh_sam_page_fn = refresh_sam_page
         rebuild_sam_families()
 
@@ -1068,7 +1215,24 @@ class WizardPages:
         
         title_lbl = tk.Label(head, text="SAM 3 (3)", bg=CARD_BG, fg=TEXT, font=F_SECTION)
         title_lbl.pack(side="left")
-        
+
+        # Badge dot for SAM 3 header
+        sam3_badge_frame = tk.Frame(head, bg=CARD_BG)
+        sam3_badge_frame.pack(side="left", padx=(10, 0))
+        sam3_dot = tk.Label(sam3_badge_frame, text="●", bg=CARD_BG, font=F_SMALL_B, fg=CARD_BORDER)
+        sam3_dot.pack(side="left", padx=1)
+
+        def update_sam3_badges(is_exp: bool):
+            if is_exp:
+                sam3_dot.configure(fg=CARD_BG)  # hidden when expanded
+                return
+            if installed and not self.plan.has(remove_key):
+                sam3_dot.configure(fg=SUCCESS)
+            elif self.plan.has(install_key):
+                sam3_dot.configure(fg=ACCENT)
+            else:
+                sam3_dot.configure(fg=CARD_BORDER)
+
         container = tk.Frame(body, bg=CARD_BG)
         if is_expanded:
             container.pack(fill="x", pady=(4, 0))
@@ -1179,6 +1343,7 @@ class WizardPages:
             "card_widget": card,
             "arrow_var": arrow_var,
             "container": container,
+            "update_badges": update_sam3_badges,
         }
 
     def _run_sam3_download(self, job: Job):

@@ -26,13 +26,16 @@ import sys
 
 
 class LandingPage:
-    def show_landing(self):
+    def show_landing(self, _preserve=None):
         self.current_screen = "landing"
         for w in self.root_frame.winfo_children():
+            if _preserve is not None and w is _preserve:
+                continue
             w.destroy()
 
         wrap = tk.Frame(self.root_frame, bg=BG)
-        wrap.pack(fill="both", expand=True)
+        wrap.place(relx=0, rely=0, relwidth=1, relheight=1)
+        self._landing_frame = wrap
         center = tk.Frame(wrap, bg=BG)
         center.place(relx=0.5, rely=0.4, anchor="center")
 
