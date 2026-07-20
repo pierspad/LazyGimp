@@ -1,4 +1,0 @@
-# Follow `source` statements relative to the repository root
-# (CI runs shellcheck with --external-sources --source-path=.)
-external-sources=true
-source-path=.

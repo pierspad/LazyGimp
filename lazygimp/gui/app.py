@@ -1,0 +1,317 @@
+"""LazyGimpApp — root-window plumbing shared by every screen: theming, the
+status bar, the background-job runner, the log pump and global scroll
+routing. The screens themselves live in pages/ as mixins; this class just
+composes them (landing / uninstall / wizard / install-progress).
+"""
+from __future__ import annotations
+
+import queue
+import threading
+
+from ..compat import tk
+from ..hardware import detect_hardware
+from ..job import Job
+from ..plan import InstallPlan, PlannedAction, WizardStep
+from . import theme
+from .dialogs import TkPasswordPrompt, themed_info
+from .icons import blit_icon
+from .pages import InstallProgressPage, LandingPage, UninstallPage, WizardPages
+from .theme import ACCENT, BG, F_SMALL, TEXT_MUTED
+
+
+class LazyGimpApp(LandingPage, UninstallPage, WizardPages, InstallProgressPage):
+    def __init__(self, root):
+        self.root = root
+        root.title("LazyGimp installer")
+        root.geometry("1040x800")
+        root.minsize(920, 660)
+        theme.apply_style(root)
+
+        self.log_queue: "queue.Queue[str]" = queue.Queue()
+        self.busy = False
+        self.current_job = None
+        self.current_screen = "landing"
+        self.hw = detect_hardware()
+        self.password_prompt = TkPasswordPrompt(root)
+
+        # Wizard/plan state — (re)initialized fresh by show_wizard()/
+        # show_install_progress() each time either screen is entered.
+        self.plan = InstallPlan()
+        self.wizard_steps: list[WizardStep] = []
+        self.wizard_index = 0
+        self.plan_actions: list[PlannedAction] = []
+        self._exec_log_lines: list[str] = []
+
+        self.root_frame = tk.Frame(root, bg=BG)
+        self.root_frame.pack(fill="both", expand=True)
+        self.root.bind("<Key>", self._on_global_key)
+        self.show_landing()
+        self.root.after(150, self._drain_log_queue)
+
+    # ---- status bar -----------------------------------------------------
+
+    def _build_status_bar(self, parent):
+        bar = tk.Frame(parent, bg=BG)
+        bar.pack(fill="x", padx=26, pady=(0, 14), side="bottom")
+        self.status_spinner = tk.Canvas(bar, width=16, height=16, highlightthickness=0, bd=0, bg=BG)
+        self.status_spinner.pack(side="left", padx=(0, 8))
+        self.status_var = tk.StringVar(value="Full log is also printed to the terminal this was launched from.")
+        tk.Label(bar, textvariable=self.status_var, bg=BG, fg=TEXT_MUTED, font=F_SMALL, anchor="w").pack(
+            side="left", fill="x", expand=True)
+        self._status_spin_frame = 0
+        self._status_spinning = False
+
+    def _spin_status(self):
+        if not self._status_spinning or not self.status_spinner.winfo_exists():
+            return
+        self.status_spinner.delete("all")
+        blit_icon(self.status_spinner, 8, 8, "spinner", color=ACCENT, size=16, frame=self._status_spin_frame % 12)
+        self._status_spin_frame += 1
+        self.root.after(90, self._spin_status)
+
+    # ---- log pump --------------------------------------------------------
+
+    _STATUS_MAX_CHARS = 160
+
+    def _drain_log_queue(self):
+        msgs = []
+        try:
+            while True:
+                msgs.append(self.log_queue.get_nowait())
+        except queue.Empty:
+            pass
+        if msgs:
+            last = msgs[-1]
+            if hasattr(self, "status_var") and self.status_var is not None:
+                clean = " ".join(last.replace("\r", " ").split())
+                if len(clean) > self._STATUS_MAX_CHARS:
+                    clean = "…" + clean[-(self._STATUS_MAX_CHARS - 1):]
+                try:
+                    self.status_var.set(clean)
+                except tk.TclError:
+                    pass
+            if self.current_screen == "installing":
+                self._exec_log_lines.extend(msgs)
+                del self._exec_log_lines[:-500]
+                # One batched Text insert per tick, however many lines
+                # arrived — pip can emit hundreds of lines a second and a
+                # per-line insert+scroll would stall the main thread.
+                self._append_exec_log_lines(msgs)
+        self.root.after(150, self._drain_log_queue)
+
+    # ---- background jobs -------------------------------------------------
+
+    def set_busy(self, busy: bool):
+        self.busy = busy
+        if not hasattr(self, "status_spinner") or not self.status_spinner.winfo_exists():
+            return
+        self._status_spinning = busy
+        if busy:
+            self._spin_status()
+        else:
+            self.status_spinner.delete("all")
+
+    def run_in_background(self, fn, on_done=None):
+        if self.busy:
+            themed_info(self.root, "Busy", "Another operation is already running.")
+            return
+        self.set_busy(True)
+        job = Job(self.log_queue, password_prompt=self.password_prompt)
+        self.current_job = job
+
+        def wrapper():
+            try:
+                fn(job)
+            except Exception as e:
+                job.log(f"ERROR: {e}")
+            finally:
+                if self.current_job is job:
+                    self.current_job = None
+                self.root.after(0, lambda: (self.set_busy(False), (on_done() if on_done else None)))
+
+        threading.Thread(target=wrapper, daemon=True).start()
+
+    def cancel_current_job(self):
+        if self.current_job is not None:
+            self.current_job.log("Cancel requested by user — stopping...")
+            self.current_job.cancel()
+
+    def _on_global_key(self, event):
+        focused = self.root.focus_get()
+        is_entry = False
+        if focused:
+            try:
+                widget_class = str(focused.winfo_class())
+                if "entry" in widget_class.lower() or "text" in widget_class.lower():
+                    is_entry = True
+            except Exception:
+                pass
+
+        key = event.keysym.lower()
+        state = event.state
+        
+        # Detect Alt key modifier
+        is_alt = (state & 0x0008) != 0 or (state & 0x0080) != 0 or "alt" in event.keysym.lower()
+        
+        # 1. Alt-based navigation (Always active)
+        if is_alt:
+            if key == "right":
+                if self.current_screen == "wizard" and hasattr(self, "wizard_steps") and self.wizard_index < len(self.wizard_steps) - 1:
+                    if self._wizard_can_advance():
+                        self._wizard_advance()
+                return
+            elif key == "left":
+                if self.current_screen == "wizard":
+                    self._wizard_back()
+                return
+            elif key == "s":
+                if self.current_screen == "wizard" and hasattr(self, "wizard_steps"):
+                    step = self.wizard_steps[self.wizard_index]
+                    if not step.prerequisite:
+                        self._wizard_advance()
+                return
+            elif key == "i":
+                if self.current_screen == "wizard" and hasattr(self, "wizard_steps"):
+                    step = self.wizard_steps[self.wizard_index]
+                    if step.key == "review":
+                        self._wizard_start_install()
+                return
+
+        # 2. Prevent single-character shortcuts if typing in text entry
+        if is_entry:
+            return
+
+        # 3. Single-character/Arrow keys when not typing
+        if self.current_screen == "landing":
+            if key in ("1", "q"):
+                self.show_wizard()
+                return
+            elif key == "2":
+                self.start_quick_setup()
+                return
+            elif key == "u":
+                if hasattr(self, "show_uninstall_confirm"):
+                    self.show_uninstall_confirm()
+                elif hasattr(self, "show_uninstall"):
+                    self.show_uninstall()
+                return
+        
+        elif self.current_screen == "wizard" and hasattr(self, "wizard_steps"):
+            step = self.wizard_steps[self.wizard_index]
+            
+            if key == "prior":
+                scroller = getattr(self, "_wizard_scroller", None)
+                if scroller:
+                    scroller.page_up()
+                return
+            elif key == "next":
+                scroller = getattr(self, "_wizard_scroller", None)
+                if scroller:
+                    scroller.page_down()
+                return
+            
+            if key in ("right", "return", "down"):
+                if step.key == "review" and key == "return":
+                    self._wizard_start_install()
+                elif self._wizard_can_advance():
+                    self._wizard_advance()
+                return
+            elif key in ("left", "escape", "backspace", "up"):
+                self._wizard_back()
+                return
+            elif key == "s":
+                if not step.prerequisite:
+                    self._wizard_advance()
+                return
+                
+            if step.key == "gimp":
+                if key in ("1", "p"):
+                    if hasattr(self, "_wizard_pick_gimp_method"):
+                        self._wizard_pick_gimp_method("pm")
+                elif key in ("2", "a"):
+                    if hasattr(self, "_wizard_pick_gimp_method"):
+                        self._wizard_pick_gimp_method("appimage")
+                        
+            elif step.key == "components":
+                if key in ("1", "p"):
+                    handler = getattr(self, "_wizard_cards", {}).get("photogimp")
+                    if handler:
+                        handler()
+                elif key in ("2", "g"):
+                    handler = getattr(self, "_wizard_cards", {}).get("gmic")
+                    if handler:
+                        handler()
+                elif key in ("3", "b"):
+                    handler = getattr(self, "_wizard_cards", {}).get("batcher")
+                    if handler:
+                        handler()
+                    
+            elif step.key == "sam":
+                is_shift = (event.state & 0x0001) != 0
+                shift_num = None
+                if key in ("exclam", "1"):
+                    shift_num = 1
+                elif key in ("at", "quotedbl", "2"):
+                    shift_num = 2
+                elif key in ("numbersign", "sterling", "3"):
+                    shift_num = 3
+                elif key in ("dollar", "4"):
+                    shift_num = 4
+                
+                if is_shift and shift_num is not None:
+                    active_fam = getattr(self, "_sam_expanded_family", "SAM1")
+                    if active_fam == "SAM1":
+                        model_labels = ["vit_b", "vit_l", "vit_h"]
+                        if shift_num <= len(model_labels):
+                            handler = getattr(self, "_wizard_cards", {}).get(f"sam_model:{model_labels[shift_num - 1]}")
+                            if handler:
+                                handler()
+                    elif active_fam == "SAM2":
+                        model_labels = ["hiera_tiny", "hiera_small", "hiera_base_plus", "hiera_large"]
+                        if shift_num <= len(model_labels):
+                            handler = getattr(self, "_wizard_cards", {}).get(f"sam_model:{model_labels[shift_num - 1]}")
+                            if handler:
+                                handler()
+                    elif active_fam == "SAM3":
+                        if shift_num == 1:
+                            handler = getattr(self, "_wizard_cards", {}).get("sam3")
+                            if handler:
+                                handler()
+                    return
+
+                if not is_shift:
+                    if key == "1":
+                        self.show_sam_category("SAM1")
+                    elif key == "2":
+                        self.show_sam_category("SAM2")
+                    elif key == "3":
+                        self.show_sam_category("SAM3")
+                    elif key == "t":
+                        entry = getattr(self, "_hf_token_entry", None)
+                        if entry and entry.winfo_exists():
+                            entry.focus_set()
+                    elif key == "p":
+                        combo = getattr(self, "_pytorch_combo", None)
+                        if combo and combo.winfo_exists():
+                            combo.focus_set()
+                            try:
+                                combo._clicked()
+                            except Exception:
+                                pass
+                    elif key == "a":
+                        handler = getattr(self, "_wizard_cards", {}).get("queue_all_sam1")
+                        if handler:
+                            handler()
+                    elif key == "b":
+                        handler = getattr(self, "_wizard_cards", {}).get("queue_all_sam2")
+                        if handler:
+                            handler()
+                    
+            elif step.key == "review":
+                if key == "space":
+                    self._wizard_start_install()
+                elif key in ("1", "2", "3", "4", "5", "6", "7", "8", "9"):
+                    idx = int(key) - 1
+                    cmds = getattr(self, "_review_rows_discard_commands", [])
+                    if 0 <= idx < len(cmds):
+                        cmds[idx]()
