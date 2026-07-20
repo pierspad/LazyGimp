@@ -1,3 +1,13 @@
+## [2.0.0-dev.6](https://github.com/pierspad/LazyGimp/compare/v2.0.0-dev.5...v2.0.0-dev.6) (2026-07-20)
+
+### ✨ Features
+
+* **gui:** smooth landing→wizard transition + SAM header badges ([e64762a](https://github.com/pierspad/LazyGimp/commit/e64762a8dfebd0db81c50a5872370ef02610adfc))
+
+### 🐛 Bug Fixes
+
+* **ci:** authenticate GitHub API curl to avoid rate-limit (exit 22) ([011c5ba](https://github.com/pierspad/LazyGimp/commit/011c5bad9236f2bf58a59f62a7e261846052bf47))
+
 ## [2.0.0-dev.5](https://github.com/pierspad/LazyGimp/compare/v2.0.0-dev.4...v2.0.0-dev.5) (2026-07-19)
 
 ### 🐛 Bug Fixes
