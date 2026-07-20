@@ -75,7 +75,17 @@ if [[ -f "${SIBLING}/gimpsam/__init__.py" ]]; then
 else
   GS_TMP="${STAGE}/gimpsam-src"
   mkdir -p "$GS_TMP"
+
+  # Build the Authorization header if a token is available (CI sets
+  # GITHUB_TOKEN; local dev falls back to unauthenticated, which has a
+  # lower rate-limit but works fine for infrequent local builds).
+  GH_AUTH_HEADER=()
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    GH_AUTH_HEADER=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+  fi
+
   GS_URL="$(curl -fsSL -H 'User-Agent: LazyGimp-build' \
+      "${GH_AUTH_HEADER[@]+${GH_AUTH_HEADER[@]}}" \
       "https://api.github.com/repos/pierspad/GIMPSAM/releases/latest" 2>/dev/null \
     | python3 -c "
 import json, sys
@@ -86,12 +96,13 @@ except Exception:
 for asset in release.get('assets', []):
     if asset.get('name') == 'gimpsam-src.zip':
         print(asset['browser_download_url'])
-        break")"
+        break" || true)"
   if [[ -n "$GS_URL" ]]; then
     echo "vendoring gimpsam from the latest GIMPSAM release: ${GS_URL}"
-    curl -fsSL "$GS_URL" -o "${GS_TMP}/gimpsam.zip"
+    curl -fsSL "${GH_AUTH_HEADER[@]+${GH_AUTH_HEADER[@]}}" \
+      "$GS_URL" -o "${GS_TMP}/gimpsam.zip"
   else
-    echo "vendoring gimpsam from pierspad/GIMPSAM@main (no release asset yet)"
+    echo "vendoring gimpsam from pierspad/GIMPSAM@main (no release asset or rate-limited)"
     curl -fsSL "https://github.com/pierspad/GIMPSAM/archive/main.zip" -o "${GS_TMP}/gimpsam.zip"
   fi
   (cd "$GS_TMP" && unzip -q gimpsam.zip)

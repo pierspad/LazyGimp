@@ -88,6 +88,8 @@ jobs:
           pip install pyinstaller customtkinter pillow
 
       - name: Build assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash scripts/build_release_assets.sh 0.0.0-ci
 
       - name: Assets must actually run
