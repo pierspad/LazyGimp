@@ -1,0 +1,10 @@
+# Dependency for the PySide6 GUI engine (lazygimp/gui_qt/).
+#
+# Kept in a separate file from the (currently nonexistent) core
+# requirements list on purpose: the CLI and the CustomTkinter GUI
+# (lazygimp/gui/) don't need Qt at all. Once the Qt engine replaces the
+# Tk one as the shipped GUI, this can be folded into whatever the
+# project's main dependency manifest becomes as part of the packaging
+# task — not done here since that's explicitly out of scope for this
+# phase (see lazygimp/gui_qt/README.md).
+PySide6>=6.11
