@@ -206,6 +206,55 @@ class _StringVar:
         self._value = value
 
 
+_ACTION_SORT_KEY_ORDER = [
+    "gimp_install_pm",
+    "gimp_install_appimage",
+    "photogimp:install", "photogimp:remove",
+    "gmic:install", "gmic:remove",
+    "batcher:install", "batcher:remove",
+    "sam_setup:install", "sam_setup:remove",
+]
+
+
+def _action_sort_index(action: PlannedAction) -> tuple[int, int, str]:
+    k = action.key
+    for idx, prefix in enumerate(_ACTION_SORT_KEY_ORDER):
+        if k == prefix or k.startswith(prefix):
+            return (0, idx, k)
+    if k.startswith("sam_model:"):
+        return (1, 0, k)
+    if k.startswith("sam3"):
+        return (1, 1, k)
+    return (2, 0, k)
+
+
+def available_torch_indexes(hw) -> dict[str, str]:
+    urls = {}
+    urls["CPU (universal, smaller download)"] = TORCH_INDEX_URLS["CPU (universal, smaller download)"]
+
+    gpu_vendor = (hw.gpu.get("vendor", "") if (hw and hw.gpu) else "").upper()
+    has_nvidia = "NVIDIA" in gpu_vendor
+    has_amd = "AMD" in gpu_vendor or "ROCM" in gpu_vendor or "RADEON" in gpu_vendor
+    has_intel = "INTEL" in gpu_vendor or "ARC" in gpu_vendor
+
+    if has_nvidia:
+        for k in ("NVIDIA CUDA 13.2 (latest)", "NVIDIA CUDA 13.0", "NVIDIA CUDA 12.8"):
+            if k in TORCH_INDEX_URLS:
+                urls[k] = TORCH_INDEX_URLS[k]
+    if has_amd:
+        for k in ("AMD ROCm 7.2 (latest)", "AMD ROCm 6.4"):
+            if k in TORCH_INDEX_URLS:
+                urls[k] = TORCH_INDEX_URLS[k]
+    if has_intel:
+        if "Intel Arc / XPU (Intel GPU)" in TORCH_INDEX_URLS:
+            urls["Intel Arc / XPU (Intel GPU)"] = TORCH_INDEX_URLS["Intel Arc / XPU (Intel GPU)"]
+
+    if len(urls) == 1 and hw and hw.gpu and not has_nvidia and not has_amd and not has_intel:
+        urls.update(TORCH_INDEX_URLS)
+
+    return urls
+
+
 class WizardPages:
     _WIZARD_RENDERERS = {
         "gimp": "_wizard_render_gimp",
@@ -469,8 +518,6 @@ class WizardPages:
         for prefix, step_key in self._WIZARD_KEY_PREFIXES:
             if key.startswith(prefix):
                 return step_key
-        return "review"
-
     def _wizard_discard_many(self, keys: list[str]):
         for key in keys:
             self.plan.discard(key)
@@ -478,7 +525,8 @@ class WizardPages:
 
     def _wizard_start_install(self):
         self._current_wizard_frame = None
-        self.show_install_progress(list(self.plan))
+        sorted_actions = sorted(list(self.plan), key=_action_sort_index)
+        self.show_install_progress(sorted_actions)
 
     # ------------------------------------------------------------------
     # Generic install/remove toggle card (PhotoGIMP / G'MIC / Batcher)
@@ -906,7 +954,7 @@ class WizardPages:
         for spec in missing:
             key = f"sam_model:{spec.key}:install"
             if not self.plan.has(key):
-                self.plan.add(PlannedAction(key, f"Download {spec.label}", "install",
+                self.plan.add(PlannedAction(key, f"Download {spec.family} model ({spec.label})", "install",
                                              self._sam_model_install_run(spec)))
         self._sync_sam_setup_in_plan()
         self.refresh_sam_page()
@@ -923,8 +971,15 @@ class WizardPages:
         row_layout.setContentsMargins(0, 0, 0, 0)
         row_layout.addWidget(_label(row, "PyTorch build", F_BODY_B, TEXT))
         combo = QComboBox(row)
-        combo.addItems(list(TORCH_INDEX_URLS.keys()))
-        combo.setCurrentText(self.torch_choice.get())
+        avail_urls = available_torch_indexes(getattr(self, "hw", None))
+        combo.addItems(list(avail_urls.keys()))
+        curr_choice = self.torch_choice.get()
+        if curr_choice in avail_urls:
+            combo.setCurrentText(curr_choice)
+        else:
+            first_choice = list(avail_urls.keys())[0]
+            combo.setCurrentText(first_choice)
+            self.torch_choice.set(first_choice)
         combo.setFixedWidth(360)
         combo.setFixedHeight(38)
         combo.setStyleSheet(f"""
@@ -1083,10 +1138,10 @@ class WizardPages:
                 def cmd():
                     inst = model_installed(s)
                     if inst:
-                        self.plan.toggle(PlannedAction(rkey, f"Remove {s.label}", "remove",
+                        self.plan.toggle(PlannedAction(rkey, f"Remove {s.family} model ({s.label})", "remove",
                                                         self._sam_model_remove_run(s)))
                     else:
-                        self.plan.toggle(PlannedAction(ikey, f"Download {s.label}", "install",
+                        self.plan.toggle(PlannedAction(ikey, f"Download {s.family} model ({s.label})", "install",
                                                         self._sam_model_install_run(s)))
                     self._sync_sam_setup_in_plan()
                     self.refresh_sam_page()

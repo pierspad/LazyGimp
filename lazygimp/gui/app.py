@@ -27,6 +27,7 @@ import queue
 import threading
 
 from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QApplication, QComboBox, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
     QPlainTextEdit, QTextEdit, QVBoxLayout, QWidget,
@@ -134,6 +135,12 @@ class LazyGimpApp(LandingPage, UninstallPage, WizardPages, InstallProgressPage):
         self.window = root  # alias some dialogs.py helpers look for (show_snackbar)
         root.setWindowTitle("LazyGimp installer")
         root.setFixedSize(960, 680)
+
+        app_icon = QIcon(render_icon_pixmap("photogimp", ACCENT, 64))
+        root.setWindowIcon(app_icon)
+        app_instance = QApplication.instance()
+        if app_instance is not None:
+            app_instance.setWindowIcon(app_icon)
 
         self.log_queue: "queue.Queue[str]" = queue.Queue()
         self.busy = False

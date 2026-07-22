@@ -251,16 +251,22 @@ class RoundedCard(QFrame):
             self._filter = _CardEventFilter(self)
             self._install_filter(self)
 
-    def _install_filter(self, widget):
-        if isinstance(widget, QPushButton):
+    def childEvent(self, event):
+        super().childEvent(event)
+        if event.type() == QEvent.ChildAdded and self._filter is not None:
+            c = event.child()
+            if isinstance(c, QWidget):
+                QTimer.singleShot(0, lambda: self._install_filter(c))
+
+    def _install_filter(self, widget: QWidget):
+        if self._filter is None:
             return
-        widget.setMouseTracking(True)
-        widget.installEventFilter(self._filter)
-        for child in widget.findChildren(QWidget):
-            if isinstance(child, QPushButton):
-                continue
-            child.setMouseTracking(True)
-            child.installEventFilter(self._filter)
+        targets = [widget] + widget.findChildren(QWidget)
+        for w in targets:
+            w.setMouseTracking(True)
+            if self._command is not None and not isinstance(w, QPushButton):
+                w.setCursor(QCursor(Qt.PointingHandCursor))
+            w.installEventFilter(self._filter)
 
     def _on_click(self):
         if self._command:
@@ -299,9 +305,6 @@ class RoundedCard(QFrame):
                 border: none;
             }}
         """)
-        # Children of .body are transparent QWidgets by default in Qt (no
-        # per-child bg patching needed like the Tk engine's
-        # _set_bg_recursive) — the card's background shows through.
 
 
 class _CardEventFilter(QObject):
@@ -317,9 +320,14 @@ class _CardEventFilter(QObject):
         if t == QEvent.Enter:
             self._card._on_enter()
         elif t == QEvent.Leave:
-            self._card._on_leave()
+            pos = QCursor.pos()
+            card_pos = self._card.mapFromGlobal(pos)
+            if not self._card.rect().contains(card_pos):
+                self._card._on_leave()
         elif t == QEvent.MouseButtonPress:
-            self._card._on_click()
+            if not isinstance(obj, QPushButton):
+                self._card._on_click()
+                return True
         return False
 
 

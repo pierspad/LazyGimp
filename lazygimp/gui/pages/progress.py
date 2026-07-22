@@ -275,7 +275,7 @@ class InstallProgressPage:
         # ---- Per-step terminal panel ----
         log_panel = QFrame(content)
         log_panel.setStyleSheet(
-            f"QFrame {{ background-color: {LOG_BG}; border: 1px solid {CARD_BORDER}; }}"
+            f"QFrame {{ background-color: {LOG_BG}; border: 1px solid {CARD_BORDER}; border-radius: 12px; }}"
         )
         log_panel_layout = QVBoxLayout(log_panel)
         log_panel_layout.setContentsMargins(2, 2, 2, 2)
@@ -285,7 +285,7 @@ class InstallProgressPage:
 
         # Header bar
         log_header = QWidget(log_panel)
-        log_header.setStyleSheet("background-color: #16181d;")
+        log_header.setStyleSheet("background-color: #16181d; border-top-left-radius: 10px; border-top-right-radius: 10px;")
         log_header_layout = QHBoxLayout(log_header)
         log_header_layout.setContentsMargins(12, 7, 12, 7)
 
@@ -472,14 +472,16 @@ class InstallProgressPage:
         status = self.step_statuses[idx]
 
         self.term_header_lbl.setText(f"> Step {idx + 1}: {action.label}")
-        status_text, status_fg = {
-            "pending":  ("● Pending",  TEXT_MUTED),
-            "running":  ("⏳ Running…", ACCENT),
-            "success":  ("✔ Success",  SUCCESS),
-            "failed":   ("✖ Failed",   DANGER),
-        }.get(status, ("", TEXT_MUTED))
+        status_text, status_fg, bg_color = {
+            "pending":  ("Pending",  TEXT_MUTED, "#20232a"),
+            "running":  ("Running…", ACCENT,     "#1c2838"),
+            "success":  ("Success",  SUCCESS,    "#162b22"),
+            "failed":   ("Failed",   DANGER,     "#2e1b1d"),
+        }.get(status, ("", TEXT_MUTED, "transparent"))
         self.term_status_lbl.setText(status_text)
-        self.term_status_lbl.setStyleSheet(f"color: {status_fg}; background: transparent;")
+        self.term_status_lbl.setStyleSheet(
+            f"color: {status_fg}; background-color: {bg_color}; padding: 4px 12px; border-radius: 6px;"
+        )
 
         text_widget = self.exec_log_text
         lines = self.step_logs[idx]
