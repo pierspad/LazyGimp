@@ -63,6 +63,8 @@ def install_gimp_package_manager(job: Job, include_gmic: bool = True) -> bool:
         job.log(f"NOTE: {note}")
     if rc != 0:
         job.log(f"Package manager install failed (exit {rc}).")
+        if distro == "arch":
+            job.log("DIAGNOSTIC TIP: If pacman failed with 'unable to lock database', check if pamac/discover/terminal is using pacman. If stale, run: sudo rm /var/lib/pacman/db.lck")
         return False
     gimp_warm_up(job)
     return True
@@ -84,6 +86,8 @@ def install_gmic_only(job: Job) -> bool:
     rc = job.run_root(fam.install_cmd(pkgs))
     if rc != 0:
         job.log(f"G'MIC install failed (exit {rc}).")
+        if distro == "arch":
+            job.log("DIAGNOSTIC TIP: If pacman failed with 'unable to lock database', check if pamac/discover/terminal is using pacman. If stale, run: sudo rm /var/lib/pacman/db.lck")
         return False
     job.log("G'MIC installed.")
     return True
