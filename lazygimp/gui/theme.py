@@ -244,8 +244,22 @@ def build_stylesheet() -> str:
         border-radius: 4px;
         min-height: 24px;
     }}
+    QScrollBar:vertical {{
+        background: transparent;
+        width: 10px;
+        margin: 2px;
+    }}
+    QScrollBar::handle:vertical {{
+        background: {SCROLLBAR};
+        border-radius: 5px;
+        min-height: 24px;
+    }}
+    QScrollBar::handle:vertical:hover {{
+        background: #60646e;
+    }}
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
         height: 0px;
+        background: transparent;
     }}
     QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
         background: transparent;
@@ -258,11 +272,15 @@ def build_stylesheet() -> str:
     }}
     QScrollBar::handle:horizontal {{
         background: {SCROLLBAR};
-        border-radius: 4px;
+        border-radius: 5px;
         min-width: 24px;
+    }}
+    QScrollBar::handle:horizontal:hover {{
+        background: #60646e;
     }}
     QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
         width: 0px;
+        background: transparent;
     }}
     QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
         background: transparent;

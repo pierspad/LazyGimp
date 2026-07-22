@@ -388,7 +388,7 @@ class WizardPages:
     def _rebuild_nav_buttons(self, step: WizardStep):
         _clear_layout(self._wizard_nav_frame)
         back_btn = RoundedButton(self._wizard_nav_frame, "← Back [Backspace]", variant="secondary",
-                                  width=160, command=self._wizard_back)
+                                  width=185, command=self._wizard_back)
         self._wizard_nav_layout.addWidget(back_btn)
         self._wizard_nav_layout.addStretch(1)
 
@@ -592,6 +592,9 @@ class WizardPages:
         def on_card_click():
             if not is_card_enabled:
                 show_snackbar(self, disabled_reason or "Not available", "warn")
+                return
+            if installed and not self.plan.has(f"{key}:remove"):
+                show_snackbar(self, f"{title} is already installed on your system", "info")
                 return
             now_queued = self.plan.toggle(PlannedAction(action_key, action_label, action_kind, action_run))
             if advance and now_queued:
@@ -797,6 +800,10 @@ class WizardPages:
         layout.addStretch(2)
 
     def _wizard_pick_gimp_method(self, method: str):
+        if find_gimp_binary():
+            show_snackbar(self, "GIMP is already installed on your system", "info")
+            self._wizard_advance()
+            return
         self.plan.discard("gimp_install_pm")
         self.plan.discard("gimp_install_appimage")
         if method == "pm":
@@ -1116,7 +1123,7 @@ class WizardPages:
 
         head_layout.addStretch(1)
         queue_all_btn = RoundedButton(head, "Queue all missing", icon="install", variant="secondary",
-                                       width=170, command=lambda: self._sam_queue_all(family_key))
+                                       width=200, command=lambda: self._sam_queue_all(family_key))
         self._wizard_cards[f"queue_all_{family_key.lower()}"] = queue_all_btn.command
         head_layout.addWidget(queue_all_btn)
         body_layout.addWidget(head)

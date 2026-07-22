@@ -61,13 +61,16 @@ class QtAppIntegrationTests(unittest.TestCase):
         self.assertEqual(app.wizard_steps[app.wizard_index].key, "components")
         self.assertIn("photogimp", app._wizard_cards)
         
-        # Check plan membership flips when card clicked
+        # Check plan membership or snackbar notification when component card clicked
         from lazygimp.photogimp import photogimp_installed
-        action_key = "photogimp:remove" if photogimp_installed() else "photogimp:install"
-        was_queued = app.plan.has(action_key)
-        app._wizard_cards["photogimp"]()
-        self.assertNotEqual(app.plan.has(action_key), was_queued)
-        app._wizard_cards["photogimp"]()  # toggle back to original state
+        if not photogimp_installed():
+            action_key = "photogimp:install"
+            was_queued = app.plan.has(action_key)
+            app._wizard_cards["photogimp"]()
+            self.assertNotEqual(app.plan.has(action_key), was_queued)
+            app._wizard_cards["photogimp"]()  # toggle back to original state
+        else:
+            app._wizard_cards["photogimp"]()  # displays snackbar notice, does not queue
 
         app._wizard_advance()
         self.qapp.processEvents()

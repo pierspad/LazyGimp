@@ -58,7 +58,7 @@ class _ThemedDialogBase(QDialog):
 def themed_dialog(parent, title, message, kind="info") -> bool:
     """Blocking modal dialog. Returns True/False like the Tk engine's
     themed_dialog() (True = OK/Confirm, False = Cancel/dismissed)."""
-    dlg = _ThemedDialogBase(parent, width=380)
+    dlg = _ThemedDialogBase(parent, width=440)
     dlg.setWindowTitle(title)
 
     title_lbl = QLabel(title, dlg.card.body)
@@ -74,6 +74,7 @@ def themed_dialog(parent, title, message, kind="info") -> bool:
     btn_row = QWidget(dlg.card.body)
     btn_layout = QHBoxLayout(btn_row)
     btn_layout.setContentsMargins(0, 0, 0, 0)
+    btn_layout.setSpacing(10)
     btn_layout.addStretch(1)
     dlg.body_layout.addWidget(btn_row)
 
@@ -84,14 +85,14 @@ def themed_dialog(parent, title, message, kind="info") -> bool:
         dlg.accept() if value else dlg.reject()
 
     if kind == "confirm":
-        cancel = RoundedButton(btn_row, "Cancel [Esc]", variant="secondary", width=110, height=48,
+        cancel = RoundedButton(btn_row, "Cancel [Esc]", variant="secondary", width=140, height=48,
                                 command=lambda: close(False))
-        confirm = RoundedButton(btn_row, "Confirm [Enter]", variant="danger", icon="trash", width=150,
+        confirm = RoundedButton(btn_row, "Confirm [Enter]", variant="danger", icon="trash", width=175,
                                  height=48, command=lambda: close(True))
         btn_layout.addWidget(cancel)
         btn_layout.addWidget(confirm)
     else:
-        ok = RoundedButton(btn_row, "OK [Enter]", variant="primary", width=110, height=48,
+        ok = RoundedButton(btn_row, "OK [Enter]", variant="primary", width=130, height=48,
                             command=lambda: close(True))
         btn_layout.addWidget(ok)
 

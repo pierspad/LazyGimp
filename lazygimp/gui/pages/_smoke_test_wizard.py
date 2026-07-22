@@ -96,12 +96,15 @@ def main() -> int:
     assert "photogimp" in fake._wizard_cards
     assert "gmic" in fake._wizard_cards
     from lazygimp.photogimp import photogimp_installed
-    pg_key = "photogimp:remove" if photogimp_installed() else "photogimp:install"
-    photogimp_was_queued = fake.plan.has(pg_key)
-    fake._wizard_cards["photogimp"]()  # toggle it (advance=False, so we stay on this step)
-    assert fake.wizard_steps[fake.wizard_index].key == "components", "advance=False toggle must not navigate"
-    assert fake.plan.has(pg_key) != photogimp_was_queued, "toggle didn't flip plan membership"
-    fake._wizard_cards["photogimp"]()  # toggle back to original state
+    if not photogimp_installed():
+        pg_key = "photogimp:install"
+        photogimp_was_queued = fake.plan.has(pg_key)
+        fake._wizard_cards["photogimp"]()  # toggle it (advance=False, so we stay on this step)
+        assert fake.wizard_steps[fake.wizard_index].key == "components", "advance=False toggle must not navigate"
+        assert fake.plan.has(pg_key) != photogimp_was_queued, "toggle didn't flip plan membership"
+        fake._wizard_cards["photogimp"]()  # toggle back to original state
+    else:
+        fake._wizard_cards["photogimp"]()  # displays snackbar notice, does not queue
 
     # go back one step, then forward again, exercising cached-page reuse
     if fake.wizard_index > 0:
