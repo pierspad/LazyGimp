@@ -37,6 +37,12 @@ except NameError:
 
 PHOTOGIMP_REPO = "Diolinux/PhotoGIMP"
 PHOTOGIMP_RELEASE_TAG = "3.1"
+# Fallback only, used if the GitHub API call to resolve the *actual* default
+# branch fails. PhotoGIMP ships tool-layout fixes as plain commits well
+# before cutting a release (confirmed: master was a commit ahead of "3.1",
+# with real toolrc differences — an extra tool group tagged releases didn't
+# have yet) — see PHOTOGIMP_REPO fetch order in photogimp.py.
+PHOTOGIMP_BRANCH = "master"
 
 BATCHER_REPO = "kamilburda/batcher"
 BATCHER_RELEASE_TAG = "1.2.9"

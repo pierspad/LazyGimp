@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from .constants import DESKTOP_FILES_MANIFEST, PHOTOGIMP_EXCLUDE, PHOTOGIMP_MANIFEST, PHOTOGIMP_RELEASE_TAG, PHOTOGIMP_REPO, STATE_DIR, XDG_DATA_HOME, ensure_state_dir
+from .constants import DESKTOP_FILES_MANIFEST, PHOTOGIMP_BRANCH, PHOTOGIMP_EXCLUDE, PHOTOGIMP_MANIFEST, PHOTOGIMP_RELEASE_TAG, PHOTOGIMP_REPO, STATE_DIR, XDG_DATA_HOME, ensure_state_dir
 from .gimp_detect import _version_key, find_gimp_binary, gimp_config_dir, gimp_live_config_dir, gimp_version_dirs
 from .job import Job
-from .util import fetch_latest_github_release_assets
+from .util import fetch_github_repo_info, fetch_latest_github_release_assets, github_branch_archive_url
 from typing import Optional
 import glob
 import os
@@ -33,10 +33,45 @@ def photogimp_installed() -> bool:
     return False
 
 
+def _gimp_is_running() -> bool:
+    """True if a GIMP process (native or AppImage) is currently alive.
+
+    GIMP rewrites toolrc/sessionrc/gimprc back to disk on exit to persist
+    whatever tool order/dock layout it currently has in memory. If we lay
+    PhotoGIMP's files down while an existing GIMP instance is still open,
+    that instance's later, unrelated exit will silently overwrite them
+    with its own (stock) state — the assets (splash, icons, .desktop)
+    survive because GIMP never touches those, but toolrc/gimprc quietly
+    revert, which looks exactly like "PhotoGIMP didn't apply"."""
+    try:
+        return subprocess.run(
+            ["pgrep", "-x", "gimp|gimp-3.0|gimp-2.10"],
+            capture_output=True, timeout=5,
+        ).returncode == 0
+    except Exception:
+        return False
+
+
 def _photogimp_download_and_extract(job: Job) -> Optional[str]:
     tmp = tempfile.mkdtemp(prefix="lazygimp-photogimp-")
     zip_path = os.path.join(tmp, "photogimp.zip")
-    
+
+    # Prefer the repo's default-branch HEAD over a tagged release: PhotoGIMP
+    # ships tool-layout fixes as plain commits well before cutting a new
+    # release (verified directly — master was one commit ahead of the "3.1"
+    # tag, with real toolrc content differences: an extra tool group and
+    # reordered groups the tagged release didn't have yet).
+    repo_info = fetch_github_repo_info(PHOTOGIMP_REPO)
+    branch = (repo_info or {}).get("default_branch") or PHOTOGIMP_BRANCH
+    branch_url = github_branch_archive_url(PHOTOGIMP_REPO, branch)
+    job.log(f"Fetching PhotoGIMP from the latest commit on '{branch}': {branch_url}")
+    if job.download(branch_url, zip_path):
+        extracted = os.path.join(tmp, "extracted")
+        with zipfile.ZipFile(zip_path) as zf:
+            zf.extractall(extracted)
+        return extracted
+
+    job.log("Could not fetch the latest commit — falling back to the latest tagged release.")
     release_info = fetch_latest_github_release_assets(PHOTOGIMP_REPO)
     download_url = None
     if release_info:
@@ -51,13 +86,13 @@ def _photogimp_download_and_extract(job: Job) -> Optional[str]:
                     download_url = asset.get("browser_download_url")
                     break
         if download_url:
-            job.log(f"Resolved latest PhotoGIMP download URL from GitHub: {download_url}")
+            job.log(f"Resolved latest PhotoGIMP release download URL from GitHub: {download_url}")
 
     if not download_url:
         job.log(f"Falling back to pinned PhotoGIMP release tag: {PHOTOGIMP_RELEASE_TAG}")
         base_url = f"https://github.com/{PHOTOGIMP_REPO}/releases/download/{PHOTOGIMP_RELEASE_TAG}"
         download_url = f"{base_url}/PhotoGIMP-linux.zip"
-        
+
     if not job.download(download_url, zip_path):
         if not release_info:  # if we fell back, try the second asset
             fallback_url = f"https://github.com/{PHOTOGIMP_REPO}/releases/download/{PHOTOGIMP_RELEASE_TAG}/PhotoGIMP.zip"
@@ -65,7 +100,7 @@ def _photogimp_download_and_extract(job: Job) -> Optional[str]:
                 return None
         else:
             return None
-            
+
     extracted = os.path.join(tmp, "extracted")
     with zipfile.ZipFile(zip_path) as zf:
         zf.extractall(extracted)
@@ -282,6 +317,11 @@ def _photogimp_remove_desktop_files(job: Job) -> None:
 
 
 def install_photogimp(job: Job, version_hint: Optional[str] = None, gimp_command: Optional[str] = None) -> bool:
+    if _gimp_is_running():
+        job.log("ERROR: GIMP is currently running — close it first. GIMP saves its own "
+                 "toolrc/sessionrc/gimprc to disk when it exits, which would silently "
+                 "undo PhotoGIMP's layout right after this step finishes.")
+        return False
     target = gimp_config_dir(version_hint)
     if not target:
         job.log("ERROR: cannot locate a GIMP config directory — launch GIMP once, then retry.")
@@ -313,6 +353,10 @@ def install_photogimp(job: Job, version_hint: Optional[str] = None, gimp_command
 
 
 def remove_photogimp(job: Job) -> bool:
+    if _gimp_is_running():
+        job.log("ERROR: GIMP is currently running — close it first, otherwise its exit "
+                 "will rewrite toolrc/sessionrc/gimprc and interfere with the removal.")
+        return False
     found = False
     for target in gimp_version_dirs():
         manifest_path = os.path.join(target, PHOTOGIMP_MANIFEST)
