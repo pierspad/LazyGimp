@@ -91,12 +91,12 @@ class LazyGimpApp(LandingPage, UninstallPage, WizardPages, InstallProgressPage):
                 except tk.TclError:
                     pass
             if self.current_screen == "installing":
-                self._exec_log_lines.extend(msgs)
-                del self._exec_log_lines[:-500]
-                # One batched Text insert per tick, however many lines
-                # arrived — pip can emit hundreds of lines a second and a
-                # per-line insert+scroll would stall the main thread.
-                self._append_exec_log_lines(msgs)
+                if hasattr(self, "_on_log_lines_arrived"):
+                    self._on_log_lines_arrived(msgs)
+                else:
+                    self._exec_log_lines.extend(msgs)
+                    del self._exec_log_lines[:-500]
+                    self._append_exec_log_lines(msgs)
         self.root.after(150, self._drain_log_queue)
 
     # ---- background jobs -------------------------------------------------
