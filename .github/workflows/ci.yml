@@ -97,15 +97,15 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          python -m lazygimp.gui_qt._smoke_test
-          python -m lazygimp.gui_qt.pages._smoke_test_landing_uninstall
-          python -m lazygimp.gui_qt.pages._smoke_test_wizard
-          python -m lazygimp.gui_qt.pages._smoke_test_progress
+          python -m lazygimp.gui._smoke_test
+          python -m lazygimp.gui.pages._smoke_test_landing_uninstall
+          python -m lazygimp.gui.pages._smoke_test_wizard
+          python -m lazygimp.gui.pages._smoke_test_progress
 
       - name: Full app integration test (all four pages composed via app.py)
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m unittest tests.test_gui_qt_app -v
+        run: python -m unittest tests.test_gui_app -v
 
   build:
     name: Build release assets (dry run)

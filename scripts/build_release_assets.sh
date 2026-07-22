@@ -41,13 +41,13 @@
 #
 #   (a) [CHOSEN] Leave lazygimp.pyz as the zero-dependency fallback it
 #       already is — Tk/CustomTkinter only, exactly as before. `--qt` is
-#       still importable from the zipapp (lazygimp/gui_qt/ is plain-Python
+#       still importable from the zipapp (lazygimp/gui/ is plain-Python
 #       source, harmless dead weight when unused, and it's all inside
 #       lazygimp/ already so it rides along with everything else `cp -a`
 #       stages), but if PySide6 isn't already on the interpreter running
 #       the .pyz, `--qt` fails fast with a one-line "pip install -r
-#       requirements-qt.txt" message (see lazygimp/gui_qt/__init__.py's
-#       launch_gui_qt()) instead of silently doing something surprising.
+#       requirements-qt.txt" message (see lazygimp/gui/__init__.py's
+#       launch_gui()) instead of silently doing something surprising.
 #       Users who want Qt from a zipapp-style single file should grab the
 #       PyInstaller binary instead, which bundles it.
 #   (b) [REJECTED] Have the zipapp `pip install PySide6` itself on first
@@ -160,7 +160,7 @@ sed -i "s/^__version__ = .*/__version__ = \"${VERSION}\"/" \
 # --- 1. zipapp: one .pyz file, runs on any python3 with Tk -----------------
 # Tk/CustomTkinter (the default GUI) only — see the "PACKAGING DECISION"
 # note up top for why PySide6 (--qt) is deliberately NOT bundled/installed
-# here. lazygimp/gui_qt/ still gets staged along with the rest of the
+# here. lazygimp/gui/ still gets staged along with the rest of the
 # lazygimp package below (it's plain-Python source, no extra weight to
 # speak of) so `--qt` at least fails with a clear, fast message rather than
 # an ImportError stack trace if someone tries it without PySide6 installed.
@@ -180,8 +180,8 @@ chmod +x "${DIST}/lazygimp.pyz"
 # the host system for either GUI (--qt or default).
 #
 # PySide6 is collected per-submodule (QtCore/QtGui/QtWidgets — the only
-# three lazygimp/gui_qt/ actually imports; verified with
-# `grep -rhoE "from PySide6\.[A-Za-z0-9_]+" lazygimp/gui_qt`) rather than a
+# three lazygimp/gui/ actually imports; verified with
+# `grep -rhoE "from PySide6\.[A-Za-z0-9_]+" lazygimp/gui`) rather than a
 # blanket `--collect-all PySide6`. That blanket form pulls in EVERYTHING in
 # the wheel — QtWebEngine, Qt Quick/QML, Multimedia, Bluetooth, PDF, SQL,
 # ... — none of which this app uses; measured locally it bloats the binary
@@ -190,7 +190,7 @@ chmod +x "${DIST}/lazygimp.pyz"
 # styles, etc. — PyInstaller's own PySide6 hooks handle that), just not the
 # unrelated modules. Measured locally (--onedir, uncompressed): ~220MB,
 # roughly 650MB less than the blanket approach; the final --onefile binary
-# here compresses further. Re-verify this if lazygimp/gui_qt/ ever starts
+# here compresses further. Re-verify this if lazygimp/gui/ ever starts
 # importing from another PySide6 submodule (QtSvg, QtNetwork, ...) — add it
 # to the three --collect-all lines below, don't switch back to the blanket
 # form.
@@ -223,7 +223,7 @@ chmod +x "${DIST}/lazygimp.pyz"
   --collect-submodules gimpsam \
   --collect-all customtkinter \
   --collect-submodules PIL \
-  --collect-submodules lazygimp.gui_qt \
+  --collect-submodules lazygimp.gui \
   --collect-all PySide6.QtCore \
   --collect-all PySide6.QtGui \
   --collect-all PySide6.QtWidgets \

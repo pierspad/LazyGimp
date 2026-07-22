@@ -1,7 +1,7 @@
-"""Constructs one of every gui_qt widget/dialog inside a QApplication and
+"""Constructs one of every gui widget/dialog inside a QApplication and
 confirms nothing raises. Not a UI test (no display needed) — run with:
 
-    QT_QPA_PLATFORM=offscreen python3 -m lazygimp.gui_qt._smoke_test
+    QT_QPA_PLATFORM=offscreen python3 -m lazygimp.gui._smoke_test
 
 This only proves the widgets *build*; it says nothing about visual
 correctness (there's no display to compare against in CI/sandbox
@@ -16,7 +16,7 @@ import sys
 def main() -> int:
     from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget
 
-    from lazygimp.gui_qt import theme, widgets, icons, dialogs
+    from lazygimp.gui import theme, widgets, icons, dialogs
 
     app = QApplication.instance() or QApplication(sys.argv)
     app.setStyleSheet(theme.build_stylesheet())
@@ -103,7 +103,7 @@ def main() -> int:
     window.show()
     app.processEvents()
 
-    print("SMOKE TEST OK — every gui_qt widget constructed without error.")
+    print("SMOKE TEST OK — every gui widget constructed without error.")
     return 0
 
 

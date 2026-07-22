@@ -1,44 +1,23 @@
-"""Top-level integration smoke test for the PySide6 GUI: builds the full
-``lazygimp.gui_qt.app.LazyGimpApp`` (landing + uninstall + wizard +
-install-progress mixins composed together, exactly as ``installer.py
---qt`` does it) under ``QT_QPA_PLATFORM=offscreen`` and walks it through
-several screens, confirming the pieces built/smoke-tested independently
-in earlier phases (each page module has its own
-``pages/_smoke_test_*.py`` with a stubbed-out host) actually compose
-correctly once real app.py plumbing (status bar, background-job runner,
-global keyboard shortcuts, log pump) sits underneath all four of them at
-once.
+"""End-to-end integration smoke tests for LazyGimpApp (PySide6 GUI engine).
 
-Skips itself (not a failure) if PySide6 isn't installed — this file is
-picked up by the same ``python -m unittest discover -s tests`` the rest
-of the suite uses, which must keep passing on boxes without PySide6,
-the same way the CustomTkinter GUI's ``tests/gui_smoke.py`` is Tk-only
-and run explicitly (not part of the default discover). See
-``.github/workflows/ci.yml``'s ``qt-gui-smoke`` job for where this
-actually runs for real, with PySide6 installed and
-``QT_QPA_PLATFORM=offscreen`` set.
+Exercises ``lazygimp.gui.app.LazyGimpApp`` (landing + uninstall + wizard +
+progress screens, navigation, global shortcut filter, background job runner,
+status bar pump, busy guard) inside a real QApplication event loop.
+
+Run headless with:
+    QT_QPA_PLATFORM=offscreen python3 -m unittest tests.test_gui_qt_app -v
 """
 from __future__ import annotations
 
-import os
 import sys
 import time
 import unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-try:
-    import PySide6  # noqa: F401
-    _PYSIDE6_OK = True
-except ImportError:
-    _PYSIDE6_OK = False
+import importlib.util
+_PYSIDE_OK = importlib.util.find_spec("PySide6") is not None
 
 
-@unittest.skipUnless(_PYSIDE6_OK, "PySide6 not installed — see requirements-qt.txt")
+@unittest.skipUnless(_PYSIDE_OK, "PySide6 not installed — see requirements.txt")
 class QtAppIntegrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -48,8 +27,8 @@ class QtAppIntegrationTests(unittest.TestCase):
     def _build_app(self):
         from PySide6.QtWidgets import QMainWindow
 
-        from lazygimp.gui_qt import theme
-        from lazygimp.gui_qt.app import LazyGimpApp
+        from lazygimp.gui import theme
+        from lazygimp.gui.app import LazyGimpApp
 
         self.qapp.setStyleSheet(theme.build_stylesheet())
         window = QMainWindow()
@@ -81,9 +60,13 @@ class QtAppIntegrationTests(unittest.TestCase):
 
         self.assertEqual(app.wizard_steps[app.wizard_index].key, "components")
         self.assertIn("photogimp", app._wizard_cards)
-        was_queued = app.plan.has("photogimp:install")
+        
+        # Check plan membership flips when card clicked
+        from lazygimp.photogimp import photogimp_installed
+        action_key = "photogimp:remove" if photogimp_installed() else "photogimp:install"
+        was_queued = app.plan.has(action_key)
         app._wizard_cards["photogimp"]()
-        self.assertNotEqual(app.plan.has("photogimp:install"), was_queued)
+        self.assertNotEqual(app.plan.has(action_key), was_queued)
         app._wizard_cards["photogimp"]()  # toggle back to original state
 
         app._wizard_advance()
@@ -98,7 +81,6 @@ class QtAppIntegrationTests(unittest.TestCase):
 
         # -- back to landing, discarding whatever got queued -------------
         app.plan.clear()
-        app._current_wizard_frame = None
         app.show_landing()
         self.qapp.processEvents()
         self.assertEqual(app.current_screen, "landing")
@@ -117,11 +99,6 @@ class QtAppIntegrationTests(unittest.TestCase):
         self.assertEqual(app.current_screen, "landing")
 
     def test_run_in_background_updates_status_bar(self):
-        """Exercises the real background-job runner + cross-thread bridge
-        + status-bar log pump end to end (not stubbed, unlike the
-        per-page smoke tests) — the integration path none of
-        pages/*.py's own smoke tests can cover on their own, since none
-        of them build a real app.py."""
         window, app = self._build_app()
         self.addCleanup(window.close)
 
@@ -153,14 +130,7 @@ class QtAppIntegrationTests(unittest.TestCase):
         self.assertIn("hello from a real background thread", app.status_label.text())
 
     def test_busy_guard_rejects_concurrent_background_jobs(self):
-        """run_in_background's busy guard normally surfaces a blocking
-        themed_info() modal (real QDialog.exec()) when a second job is
-        attempted — correct, user-facing behavior, but not something an
-        unattended offscreen test can click through. themed_info is
-        patched out here (module-local import in gui_qt/app.py) purely
-        so this test can observe "second job was rejected, not run"
-        without hanging forever waiting for a dialog nobody will close."""
-        import lazygimp.gui_qt.app as app_module
+        import lazygimp.gui.app as app_module
 
         window, app = self._build_app()
         self.addCleanup(window.close)
@@ -202,37 +172,20 @@ class QtAppIntegrationTests(unittest.TestCase):
         from PySide6.QtCore import QEvent, Qt
         from PySide6.QtGui import QKeyEvent
 
-        import lazygimp.gui_qt.pages.wizard as wizard_module
+        import lazygimp.gui.pages.wizard as wizard_module
 
         window, app = self._build_app()
         self.addCleanup(window.close)
 
-        # Backspace from wizard step 0 with a non-empty plan opens a
-        # blocking themed_confirm() modal (real QDialog.exec()) asking
-        # "discard your selections?" — correct real-app behavior, but an
-        # unattended offscreen test has no one to click it. Patched out
-        # here (as "yes, discard") purely so the keypress path can be
-        # driven all the way through without hanging on that dialog.
         original_confirm = wizard_module.themed_confirm
         wizard_module.themed_confirm = lambda *a, **kw: True
         self.addCleanup(setattr, wizard_module, "themed_confirm", original_confirm)
 
-        # Deliberately NOT testing "2" here: on the landing screen that's
-        # start_quick_setup(), which hands a REAL plan straight to
-        # show_install_progress() and immediately starts executing it on
-        # a background thread (package-manager installs, sudo, network
-        # downloads...) — not something any automated test should ever
-        # trigger for real. "1" (open wizard) and Backspace (navigate
-        # back, only ever queuing/discarding PlannedAction metadata) are
-        # both safe to drive through the real filter.
         for key in (Qt.Key_1, Qt.Key_Backspace):
             ev = QKeyEvent(QEvent.KeyPress, key, Qt.NoModifier)
             self.qapp.sendEvent(window, ev)
             self.qapp.processEvents()
 
-        # "1" on the landing screen opens the wizard, then Backspace
-        # from step 0 (confirmed above) returns to landing — confirm it
-        # landed somewhere sane and nothing raised through the filter.
         self.assertIn(app.current_screen, ("landing", "wizard"))
 
 

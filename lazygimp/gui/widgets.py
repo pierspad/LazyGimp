@@ -1,31 +1,64 @@
-"""Reusable widgets — CustomTkinter engine behind the SAME API the pages
-already use (RoundedButton, RoundedCard, ProgressBar, ModernCheckbox,
-ScrollableFrame). The pages didn't have to change when the engine did:
-that's the point of the facade.
+"""Reusable widgets — Qt port of ``lazygimp/gui/widgets.py``.
 
-Plain tk.Label/tk.Frame children keep working inside these widgets as
-long as their bg matches the card color — the theme guarantees it.
+Public names and method signatures are kept identical to the Tk/CTk
+engine wherever it made sense (RoundedButton, RoundedCard, ProgressBar,
+ModernCheckbox, ScrollableFrame, bind_click_recursive, page_header,
+callout) so the page-porting agents can mostly find/replace an import
+line and keep calling the same methods (set_enabled, set_variant,
+set_text, start_loading/stop_loading, set_fraction, finalize,
+page_up/page_down, on_blocked=, command=).
+
+The single biggest structural difference from Tk is layout: Tk's
+pack()/grid() auto-flow with no parent-side declaration, Qt widgets need
+an explicit QLayout on their parent. That difference is NOT hidden here
+— page code will need real QVBoxLayout/QHBoxLayout/QGridLayout calls —
+but RoundedCard.body is still the plain container children get added
+to, exactly like the Tk version's tk.Frame. See gui/README.md for
+the full old->new table and the layout-migration notes.
 """
 from __future__ import annotations
 
-from ..compat import ctk, tk
-from .helpers import autowrap_label
-from .icons import icon_canvas
+from PySide6.QtCore import QEvent, QObject, QSize, QTimer, Qt
+from PySide6.QtGui import QCursor
+from PySide6.QtWidgets import (
+    QAbstractSlider, QCheckBox, QFrame, QHBoxLayout, QLabel, QProgressBar as _QProgressBar,
+    QPushButton, QScrollArea, QSizePolicy, QVBoxLayout, QWidget,
+)
+
+from .icons import icon_label, render_icon
 from .theme import (
     ACCENT, ACCENT_HOVER, ACCENT_TEXT, BG, CARD_BG, CARD_BORDER, DANGER, DANGER_HOVER,
     DANGER_TEXT, DISABLED_BG, DISABLED_TEXT, F_BODY, F_BODY_B, F_H2, F_SMALL, SECONDARY_HOVER,
-    SUCCESS, SUCCESS_HOVER, SUCCESS_TEXT, TEXT, TEXT_MUTED, TONE_COLORS,
+    SUCCESS, SUCCESS_HOVER, SUCCESS_TEXT, TEXT, TEXT_MUTED, TONE_COLORS, qfont,
 )
 
-# Text glyphs standing in for the old vector icons inside buttons — safe
-# in DejaVu Sans (the default Linux UI font), no emoji fonts involved.
+# Icon kind used inside RoundedButton per old glyph name — kept for
+# reference/back-compat only. Unlike the Tk engine, Qt buttons never
+# need a text-glyph fallback: render_icon() (QPainter-based) always
+# succeeds, no optional Pillow dependency involved.
 _BUTTON_GLYPHS = {
-    "install": "↓", "trash": "✕", "bolt": "⚡", "refresh": "⟳",
-    "link": "↗", "x": "✕", "box": "▣", "check": "✓",
+    "install": "install", "trash": "trash", "bolt": "bolt", "refresh": "refresh",
+    "link": "link", "x": "x", "box": "box", "check": "check",
 }
 
 
-class RoundedButton(ctk.CTkButton):
+class BoolVar:
+    """Minimal drop-in for tkinter.BooleanVar's get()/set() surface, for
+    page code that used to hold a tk.BooleanVar alongside ModernCheckbox.
+    Not a Tk object — just a tiny mutable box, since Qt's QCheckBox has
+    no variable= concept of its own."""
+
+    def __init__(self, value: bool = False):
+        self._value = bool(value)
+
+    def get(self) -> bool:
+        return self._value
+
+    def set(self, value: bool) -> None:
+        self._value = bool(value)
+
+
+class RoundedButton(QPushButton):
     _PALETTE = {
         "primary": (ACCENT, ACCENT_HOVER, ACCENT_TEXT),
         "success": (SUCCESS, SUCCESS_HOVER, SUCCESS_TEXT),
@@ -33,36 +66,39 @@ class RoundedButton(ctk.CTkButton):
         "secondary": (CARD_BORDER, SECONDARY_HOVER, TEXT),
     }
 
-    def __init__(self, parent, text, command=None, variant="secondary", icon=None,
+    def __init__(self, parent=None, text="", command=None, variant="secondary", icon=None,
                  width=None, height=34, radius=13, font=F_BODY_B, bg=None, on_blocked=None):
-        fill, hover, fg = self._PALETTE[variant]
-        self.icon_name = icon
-        self._icon_image = None
-        if icon:
-            from .icons import render_ctk_image
-            self._icon_image = render_ctk_image(icon, fg, size=18)
-        if self._icon_image:
-            self._icon_glyph = ""
-        else:
-            self._icon_glyph = _BUTTON_GLYPHS.get(icon, "") if icon else ""
-        self._base_text = text
-        self.on_blocked = on_blocked
+        super().__init__(parent)
         self.variant = variant
+        self.icon_name = icon
+        self._base_text = text
+        self._on_blocked = on_blocked
         self._loading = False
         self._loading_base = ""
         self._loading_frame = 0
-        super().__init__(
-            parent, text=self._decorated(text), command=command,
-            width=width or 140, height=height, corner_radius=radius,
-            fg_color=fill, hover_color=hover, text_color=fg,
-            text_color_disabled=DISABLED_TEXT, font=font, border_width=0,
-            image=self._icon_image
-        )
-        # Clicking a disabled button still means something on some pages
-        # (e.g. "enter a HF token first") — CTk swallows the click, so we
-        # listen underneath.
-        if on_blocked is not None:
-            self.bind("<Button-1>", self._maybe_blocked)
+        self._radius = radius
+        self._fixed_height = height
+        self._command = None
+
+        self.setText(text)
+        self.setFont(qfont(font))
+        self.setCursor(QCursor(Qt.PointingHandCursor))
+        self.setFixedHeight(height)
+        if width:
+            self.setFixedWidth(width)
+        else:
+            self.setMinimumWidth(140)
+        if icon:
+            self.setIcon(render_icon(icon, self._PALETTE[variant][2], size=18))
+            self.setIconSize(QSize(18, 18))
+
+        self._loading_timer = QTimer(self)
+        self._loading_timer.setInterval(350)
+        self._loading_timer.timeout.connect(self._tick_loading)
+
+        self._apply_style()
+        self.clicked.connect(self._on_clicked)
+        self.command = command  # property setter, see below
 
     # -- old-API surface -------------------------------------------------
 
@@ -78,99 +114,153 @@ class RoundedButton(ctk.CTkButton):
     def text(self):
         return self._base_text
 
+    @property
+    def on_blocked(self):
+        return self._on_blocked
+
+    @on_blocked.setter
+    def on_blocked(self, fn):
+        self._on_blocked = fn
+
     def set_text(self, text: str):
         self._base_text = text
         if not self._loading:
-            self.configure(text=self._decorated(text))
+            self.setText(text)
 
     def set_enabled(self, enabled: bool):
-        self.configure(state="normal" if enabled else "disabled")
-        # keep the fill readable when disabled (CTk only dims the text)
-        fill = self._PALETTE[self.variant][0] if enabled else DISABLED_BG
-        self.configure(fg_color=fill)
+        self.setEnabled(enabled)
 
     def set_variant(self, variant: str):
         self.variant = variant
-        fill, hover, fg = self._PALETTE[variant]
-        self.configure(fg_color=fill, hover_color=hover, text_color=fg)
+        self._apply_style()
         if self.icon_name:
-            from .icons import render_ctk_image
-            self._icon_image = render_ctk_image(self.icon_name, fg, size=18)
-            if self._icon_image:
-                self.configure(image=self._icon_image)
+            fg = self._PALETTE[variant][2]
+            self.setIcon(render_icon(self.icon_name, fg, size=18))
 
     def start_loading(self, base_text="Working"):
         if self._loading:
             return
         self._loading = True
         self._loading_base = base_text
-        self.configure(state="disabled")
-        self._animate()
+        self._loading_frame = 0
+        self.setEnabled(False)
+        self._loading_timer.start()
+        self._tick_loading()
 
     def stop_loading(self):
         self._loading = False
-        self.configure(state="normal", text=self._decorated(self._base_text))
+        self._loading_timer.stop()
+        self.setEnabled(True)
+        self.setText(self._base_text)
 
     # -- internals ---------------------------------------------------------
 
-    def _decorated(self, text: str) -> str:
-        return f"{self._icon_glyph}  {text}" if self._icon_glyph and text else (self._icon_glyph or text)
+    def _on_clicked(self):
+        if self._command:
+            self._command()
 
-    def _maybe_blocked(self, _event=None):
-        if self.cget("state") == "disabled" and self.on_blocked:
-            self.on_blocked()
-
-    def _animate(self):
-        if not self._loading or not self.winfo_exists():
-            return
+    def _tick_loading(self):
         dots = "." * (1 + self._loading_frame % 3)
-        self.configure(text=f"{self._loading_base}{dots}")
+        self.setText(f"{self._loading_base}{dots}")
         self._loading_frame += 1
-        self.after(350, self._animate)
+
+    def event(self, e):
+        # QPushButton doesn't dispatch mouse events at all while
+        # isEnabled() is False, so on_blocked is wired through a raw
+        # event() override that also sees disabled-state presses.
+        if e.type() == QEvent.MouseButtonPress and not self.isEnabled() and self._on_blocked:
+            self._on_blocked()
+        return super().event(e)
+
+    def _apply_style(self):
+        fill, hover, fg = self._PALETTE[self.variant]
+        btn_id = f"Btn_{id(self)}"
+        self.setObjectName(btn_id)
+        self.setStyleSheet(f"""
+            QPushButton#{btn_id} {{
+                background-color: {fill};
+                color: {fg};
+                border: none;
+                border-radius: {self._radius}px;
+                padding: 0 16px;
+                font-weight: 600;
+            }}
+            QPushButton#{btn_id}:hover {{
+                background-color: {hover};
+            }}
+            QPushButton#{btn_id}:pressed {{
+                background-color: {hover};
+            }}
+            QPushButton#{btn_id}:disabled {{
+                background-color: {DISABLED_BG};
+                color: {DISABLED_TEXT};
+            }}
+        """)
 
 
-class RoundedCard(ctk.CTkFrame):
-    """A rounded card with a `.body` plain-tk frame for content — pages
-    pack tk.Label/tk.Frame children into .body exactly as before.
-    Supports optional interactivity (hovering, clicking, active border color/width).
+class RoundedCard(QFrame):
+    """A rounded card with a `.body` plain QWidget for content — pages add
+    their own layout to `.body` and add children to that, same convention
+    as the Tk engine's tk.Frame (just needs an explicit QLayout, since Qt
+    has no pack()/grid() auto-flow).
+
+    Supports optional interactivity (hover/click, active border color/
+    width) via an event filter installed on the whole subtree by
+    finalize() — the Qt equivalent of the Tk engine's recursive
+    <Button-1>/<Enter>/<Leave> binding, needed because Qt (like Tk)
+    delivers mouse events to whichever child widget is under the
+    pointer, not to the card itself.
     """
 
-    def __init__(self, parent, bg=CARD_BG, border=CARD_BORDER, radius=18, pad=18, width=None, height=None,
-                 command=None, hover_bg="#2f323a", hover_border=None, active_border=None, active_width=1):
-        super().__init__(parent, fg_color=bg, border_color=border, border_width=active_width if active_border else 1,
-                         corner_radius=radius, width=width or 200, height=height or 200)
-        if width or height:
-            self.pack_propagate(False)
-            self.grid_propagate(False)
+    def __init__(self, parent=None, bg=CARD_BG, border=CARD_BORDER, radius=18, pad=18, width=None,
+                 height=None, command=None, hover_bg="#2f323a", hover_border=None, active_border=None,
+                 active_width=1):
+        super().__init__(parent)
+        self.card_id = f"Card_{id(self)}"
+        self.setObjectName(self.card_id)
         self._bg = bg
         self._border = border
+        self._radius = radius
         self._command = command
         self._hover_bg = hover_bg
         self._hover_border = hover_border
         self._active_border = active_border
         self._active_width = active_width
         self._hovered = False
+        self._filter = None
 
-        self.body = tk.Frame(self, bg=bg)
-        self.body.pack(fill="both", expand=True, padx=pad, pady=pad)
+        if width:
+            self.setFixedWidth(width)
+        if height:
+            self.setFixedHeight(height)
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(pad, pad, pad, pad)
+        self.body = QWidget(self)
+        self.body.setStyleSheet("background: transparent; border: none;")
+        outer.addWidget(self.body)
+
+        self.setMouseTracking(True)
+        self._update_style()
 
     def finalize(self):
+        """Wires up hover/click interactivity across the whole subtree.
+        Call once after all children have been added to .body — mirrors
+        the Tk engine's finalize(), which does the same recursive bind."""
         if self._command is not None:
-            self._bind_events(self)
-            self._update_colors()
+            self._filter = _CardEventFilter(self)
+            self._install_filter(self)
 
-    def _bind_events(self, widget):
-        if isinstance(widget, (ctk.CTkButton, tk.Button)):
+    def _install_filter(self, widget):
+        if isinstance(widget, QPushButton):
             return
-        try:
-            widget.configure(cursor="hand2")
-        except Exception:
-            pass
-        widget.bind("<Button-1>", lambda e: self._on_click(), add="+")
-        widget.bind("<Enter>", lambda e: self._on_enter(), add="+")
-        widget.bind("<Leave>", lambda e: self._on_leave(), add="+")
-        for child in widget.winfo_children():
-            self._bind_events(child)
+        widget.setMouseTracking(True)
+        widget.installEventFilter(self._filter)
+        for child in widget.findChildren(QWidget):
+            if isinstance(child, QPushButton):
+                continue
+            child.setMouseTracking(True)
+            child.installEventFilter(self._filter)
 
     def _on_click(self):
         if self._command:
@@ -178,13 +268,13 @@ class RoundedCard(ctk.CTkFrame):
 
     def _on_enter(self):
         self._hovered = True
-        self._update_colors()
+        self._update_style()
 
     def _on_leave(self):
         self._hovered = False
-        self._update_colors()
+        self._update_style()
 
-    def _update_colors(self):
+    def _update_style(self):
         bg_color = self._hover_bg if self._hovered else self._bg
         if self._active_border is not None:
             border_color = self._active_border
@@ -192,124 +282,225 @@ class RoundedCard(ctk.CTkFrame):
         else:
             border_color = self._hover_border if (self._hovered and self._hover_border) else self._border
             border_width = 1
-        self.configure(fg_color=bg_color, border_color=border_color, border_width=border_width)
-        self._set_bg_recursive(self.body, bg_color)
+        cursor = Qt.PointingHandCursor if self._command else Qt.ArrowCursor
+        self.setCursor(QCursor(cursor))
+        self.setStyleSheet(f"""
+            QFrame#{self.card_id} {{
+                background-color: {bg_color};
+                border: {border_width}px solid {border_color};
+                border-radius: {self._radius}px;
+            }}
+            QFrame#{self.card_id} QWidget {{
+                background: transparent;
+                border: none;
+            }}
+            QFrame#{self.card_id} QLabel {{
+                background: transparent;
+                border: none;
+            }}
+        """)
+        # Children of .body are transparent QWidgets by default in Qt (no
+        # per-child bg patching needed like the Tk engine's
+        # _set_bg_recursive) — the card's background shows through.
 
-    def _set_bg_recursive(self, widget, bg_color):
-        if isinstance(widget, (ctk.CTkButton, tk.Button)):
-            return
-        if not isinstance(widget, ctk.CTkBaseClass):
-            try:
-                widget.configure(bg=bg_color)
-            except Exception:
-                pass
-        for child in widget.winfo_children():
-            self._set_bg_recursive(child, bg_color)
+
+class _CardEventFilter(QObject):
+    """Routes Enter/Leave/MouseButtonPress from any descendant of a
+    RoundedCard back to the card's own hover/click handlers."""
+
+    def __init__(self, card: RoundedCard):
+        super().__init__(card)
+        self._card = card
+
+    def eventFilter(self, obj, event):
+        t = event.type()
+        if t == QEvent.Enter:
+            self._card._on_enter()
+        elif t == QEvent.Leave:
+            self._card._on_leave()
+        elif t == QEvent.MouseButtonPress:
+            self._card._on_click()
+        return False
 
 
-class ProgressBar(ctk.CTkProgressBar):
-    def __init__(self, parent, width=200, height=7, bg=None, track=CARD_BORDER, fill=ACCENT):
-        super().__init__(parent, width=width, height=height, corner_radius=height // 2,
-                         fg_color=track, progress_color=fill, border_width=0)
-        self.set(0)
+class ProgressBar(_QProgressBar):
+    def __init__(self, parent=None, width=200, height=7, bg=None, track=CARD_BORDER, fill=ACCENT):
+        super().__init__(parent)
+        self.setRange(0, 1000)
+        self.setValue(0)
+        self.setTextVisible(False)
+        self.setFixedHeight(height)
+        if width:
+            self.setFixedWidth(width)
+        radius = height // 2
+        self.setStyleSheet(f"""
+            QProgressBar {{
+                background-color: {track};
+                border: none;
+                border-radius: {radius}px;
+            }}
+            QProgressBar::chunk {{
+                background-color: {fill};
+                border-radius: {radius}px;
+            }}
+        """)
 
     def set_fraction(self, frac: float):
-        self.set(max(0.0, min(1.0, frac)))
+        frac = max(0.0, min(1.0, frac))
+        self.setValue(int(round(frac * 1000)))
 
 
-class ModernCheckbox(ctk.CTkCheckBox):
+class ModernCheckbox(QCheckBox):
     """With `text`, the label is part of the checkbox: clicking it toggles
-    and hovering anywhere on the row highlights the box — CTk behavior,
-    for free."""
+    — native QCheckBox behavior, for free, same as CTk's.
 
-    def __init__(self, parent, variable, command=None, size=22, bg=None,
+    `variable`, if given, is anything with get()/set() (a BoolVar, or a
+    page's own tk.BooleanVar-alike) and is kept in sync bidirectionally.
+    """
+
+    def __init__(self, parent=None, variable=None, command=None, size=22, bg=None,
                  text="", font=None, text_color=None):
-        kwargs = {}
-        if not text:
-            kwargs["width"] = size
-        super().__init__(parent, text=text, variable=variable, onvalue=True, offvalue=False,
-                         command=command, height=size,
-                         checkbox_width=size, checkbox_height=size, corner_radius=6,
-                         fg_color=ACCENT, hover_color=ACCENT_HOVER, border_color=CARD_BORDER,
-                         border_width=2, checkmark_color=ACCENT_TEXT,
-                         font=font or F_BODY, text_color=text_color or TEXT_MUTED,
-                         **kwargs)
+        super().__init__(text, parent)
+        self._variable = variable
+        self._command = command
+        self.setFont(qfont(font or F_BODY))
+        fg = text_color or TEXT_MUTED
+        self.setStyleSheet(f"""
+            QCheckBox {{
+                color: {fg};
+                spacing: 8px;
+            }}
+            QCheckBox::indicator {{
+                width: {size - 4}px;
+                height: {size - 4}px;
+                border-radius: 6px;
+                border: 2px solid {CARD_BORDER};
+                background: transparent;
+            }}
+            QCheckBox::indicator:hover {{
+                border: 2px solid {ACCENT_HOVER};
+            }}
+            QCheckBox::indicator:checked {{
+                background-color: {ACCENT};
+                border: 2px solid {ACCENT};
+            }}
+        """)
+        if variable is not None:
+            self.setChecked(bool(variable.get()))
+        self.toggled.connect(self._on_toggled)
+
+    def _on_toggled(self, checked: bool):
+        if self._variable is not None:
+            self._variable.set(checked)
+        if self._command:
+            self._command()
 
 
-class ScrollableFrame(ctk.CTkScrollableFrame):
-    """CTkScrollableFrame subclasses tkinter.Frame, so plain-tk children
-    land inside the scrolled area, and it handles the mouse wheel itself
-    (recursively, on enter/leave) — no app-level routing needed."""
+class ScrollableFrame(QScrollArea):
+    """Native QScrollArea wrapper — the Qt counterpart of CTkScrollableFrame.
 
-    def __init__(self, parent, bg=BG):
-        super().__init__(parent, fg_color=bg, corner_radius=0)
-        self.inner = self  # old call sites pack content into .inner
+    Unlike the Tk engine (where `.inner = self`, since CTkScrollableFrame
+    IS its own content surface), QScrollArea needs a distinct content
+    widget: `.inner` is that content QWidget. Page code adds a layout to
+    `.inner` and adds children to that layout, same convention as adding
+    to a RoundedCard's `.body`. Mouse-wheel scrolling is handled natively
+    by QScrollArea — no manual wheel-event routing needed here.
+    """
 
-    def _mouse_wheel_all(self, event):
-        import sys
-        if self._check_if_valid_scroll(event.widget):
-            multiplier = 4
-            if sys.platform.startswith("win"):
-                if self._shift_pressed:
-                    if self._parent_canvas.xview() != (0.0, 1.0):
-                        self._parent_canvas.xview("scroll", -int(event.delta / 6) * multiplier, "units")
-                else:
-                    if self._parent_canvas.yview() != (0.0, 1.0):
-                        self._parent_canvas.yview("scroll", -int(event.delta / 6) * multiplier, "units")
-            elif sys.platform == "darwin":
-                if self._shift_pressed:
-                    if self._parent_canvas.xview() != (0.0, 1.0):
-                        self._parent_canvas.xview("scroll", -event.delta * multiplier, "units")
-                else:
-                    if self._parent_canvas.yview() != (0.0, 1.0):
-                        self._parent_canvas.yview("scroll", -event.delta * multiplier, "units")
-            else:
-                if self._shift_pressed:
-                    if self._parent_canvas.xview() != (0.0, 1.0):
-                        self._parent_canvas.xview_scroll(-1 * multiplier if event.num == 4 else 1 * multiplier, "units")
-                else:
-                    if self._parent_canvas.yview() != (0.0, 1.0):
-                        self._parent_canvas.yview_scroll(-1 * multiplier if event.num == 4 else 1 * multiplier, "units")
+    def __init__(self, parent=None, bg=BG):
+        super().__init__(parent)
+        self.setWidgetResizable(True)
+        self.setFrameShape(QFrame.NoFrame)
+        self.setStyleSheet(f"QScrollArea {{ background-color: {bg}; border: none; }}")
+        self.inner = QWidget(self)
+        self.inner.setStyleSheet(f"background-color: {bg};")
+        self.setWidget(self.inner)
 
     def page_up(self):
-        try:
-            if self._parent_canvas.winfo_exists():
-                self._parent_canvas.yview_scroll(-1, "pages")
-        except Exception:
-            pass
+        bar = self.verticalScrollBar()
+        if bar is not None:
+            bar.triggerAction(QAbstractSlider.SliderPageStepSub)
 
     def page_down(self):
-        try:
-            if self._parent_canvas.winfo_exists():
-                self._parent_canvas.yview_scroll(1, "pages")
-        except Exception:
-            pass
+        bar = self.verticalScrollBar()
+        if bar is not None:
+            bar.triggerAction(QAbstractSlider.SliderPageStepAdd)
 
 
-def bind_click_recursive(widget, handler, skip=()):
-    if widget in skip:
-        return
-    try:
-        widget.configure(cursor="hand2")
-    except tk.TclError:
-        pass
-    widget.bind("<Button-1>", lambda e: handler(), add="+")
-    for child in widget.winfo_children():
-        bind_click_recursive(child, handler, skip)
+class _ClickFilter(QObject):
+    def __init__(self, handler, skip, parent=None):
+        super().__init__(parent)
+        self._handler = handler
+        self._skip = skip
+
+    def eventFilter(self, obj, event):
+        if event.type() == QEvent.MouseButtonPress and obj not in self._skip:
+            self._handler()
+        return False
+
+
+def bind_click_recursive(widget: QWidget, handler, skip=()):
+    """Installs a click handler (and pointing-hand cursor) on `widget` and
+    every descendant, skipping anything in `skip` — the Qt counterpart of
+    the Tk engine's recursive <Button-1> binder."""
+    filt = _ClickFilter(handler, skip, parent=widget)
+    widget.setProperty("_bind_click_recursive_filter", filt)  # keep it alive
+    targets = [widget] + widget.findChildren(QWidget)
+    for w in targets:
+        if w in skip:
+            continue
+        w.setCursor(QCursor(Qt.PointingHandCursor))
+        w.installEventFilter(filt)
+
+
+def autowrap_label(parent, text, fg=TEXT_MUTED, bg=None, font=F_SMALL, justify=Qt.AlignLeft):
+    """QLabel with native word-wrap — the Qt counterpart of the Tk
+    engine's autowrap_label(). Qt's QLabel wraps to its own available
+    width automatically (setWordWrap(True)); the Tk version needed a
+    manual <Configure> handler to fake that, which isn't needed here."""
+    lbl = QLabel(text, parent)
+    lbl.setWordWrap(True)
+    lbl.setFont(qfont(font))
+    lbl.setAlignment(justify | Qt.AlignVCenter)
+    style = f"color: {fg}; background: transparent;"
+    lbl.setStyleSheet(style)
+    lbl.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+    return lbl
 
 
 def page_header(parent, title):
-    tk.Label(parent, text=title, bg=BG, fg=TEXT, font=F_H2).pack(anchor="w", pady=(0, 16))
+    """QLabel styled like a page title. If `parent` already has a layout,
+    the header is appended to it automatically (mirroring the Tk
+    engine's page_header(), which packed itself into `parent`); otherwise
+    the label is returned for the caller to add manually."""
+    lbl = QLabel(title, parent)
+    lbl.setFont(qfont(F_H2))
+    lbl.setStyleSheet(f"color: {TEXT}; background: transparent;")
+    layout = parent.layout() if parent is not None else None
+    if layout is not None:
+        layout.addWidget(lbl)
+        layout.setSpacing(max(layout.spacing(), 0))
+    return lbl
 
 
 def callout(parent, text, tone="info"):
-    icon_kind = {"info": "info", "warn": "warn", "ok": "check"}[tone]
+    """Tone banner (info/warn/ok) with an icon + wrapped message — same
+    tones/colors as the Tk engine's callout(). Auto-adds itself to
+    `parent.layout()` when the parent already has one, same auto-pack
+    convenience as page_header()."""
+    icon_kind = {"info": "info", "warn": "warn", "ok": "check", "error": "x"}[tone]
     bgc, fg = TONE_COLORS[tone]
     card = RoundedCard(parent, bg=bgc, border=bgc, radius=14, pad=12)
-    card.pack(fill="x", pady=(4, 12))
-    row = tk.Frame(card.body, bg=bgc)
-    row.pack(fill="x")
-    icon_canvas(row, icon_kind, color=fg, size=20, bg=bgc).pack(side="left", padx=(0, 8), anchor="n")
-    autowrap_label(row, text, fg=fg, bg=bgc, font=F_SMALL).pack(side="left", fill="x", expand=True)
+    row_layout = QHBoxLayout(card.body)
+    row_layout.setContentsMargins(0, 0, 0, 0)
+    row_layout.setSpacing(8)
+    icon = icon_label(card.body, icon_kind, color=fg, size=20)
+    icon.setAlignment(Qt.AlignTop)
+    row_layout.addWidget(icon, 0, Qt.AlignTop)
+    label = autowrap_label(card.body, text, fg=fg, bg=bgc, font=F_SMALL)
+    row_layout.addWidget(label, 1)
     card.finalize()
+    layout = parent.layout() if parent is not None else None
+    if layout is not None:
+        layout.addWidget(card)
     return card

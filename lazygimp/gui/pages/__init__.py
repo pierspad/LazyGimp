@@ -1,4 +1,5 @@
-"""One module per screen, as mixins composed by LazyGimpApp."""
+"""One module per screen, as mixins composed by LazyGimpApp — PySide6
+counterpart of ``lazygimp/gui/pages/__init__.py``."""
 
 from .landing import LandingPage
 from .progress import InstallProgressPage

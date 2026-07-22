@@ -4,7 +4,6 @@ from .distro import detect_distro
 from .gimp_detect import find_gimp_binary, find_gimp_command
 from .gimp_install import appimage_present, gimp_native_installed, gmic_available_on_this_release, gmic_installed, install_gimp_appimage, install_gimp_package_manager, install_gmic_only, remove_gimp_appimage, remove_gimp_package_manager, remove_gmic_only
 from .gui import launch_gui
-from .gui_qt import launch_gui_qt
 from .hardware import detect_hardware, recommended_model_key, recommended_torch_index
 from .job import Job
 from .models import MODEL_BY_KEY, MODEL_REGISTRY, any_model_installed, model_installed, model_path
@@ -179,15 +178,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
                      "No subcommand opens the GUI.",
     )
     p.add_argument("--ephemeral", action="store_true", help="self-delete this file when the GUI closes")
-    # --qt / LAZYGIMP_GUI=qt: opt in to the PySide6 GUI (lazygimp/gui_qt/),
-    # which is being staged alongside the CustomTkinter GUI (lazygimp/gui/,
-    # still the default) so a human can A/B the two before either is
-    # dropped. The env var exists for launchers that can't easily pass an
-    # extra CLI flag (e.g. a desktop shortcut); either one being set is
-    # enough to select Qt — see main() below.
-    p.add_argument("--qt", action="store_true",
-                    help="launch the PySide6 GUI instead of the default CustomTkinter one "
-                         "(same effect as LAZYGIMP_GUI=qt)")
+    p.add_argument("--qt", action="store_true", help=argparse.SUPPRESS)  # Kept for back-compat
     sub = p.add_subparsers(dest="command")
 
     sub.add_parser("status", help="show what's installed").set_defaults(func=cmd_status)
@@ -229,11 +220,8 @@ def main() -> None:
     parser = build_arg_parser()
     args = parser.parse_args()
     if getattr(args, "command", None) is None:
-        use_qt = bool(getattr(args, "qt", False)) or os.environ.get("LAZYGIMP_GUI", "").strip().lower() == "qt"
-        if use_qt:
-            launch_gui_qt()
-        else:
-            launch_gui()
+        launch_gui()
+        return
         return
     rc = args.func(args)
     _self_destruct_if_ephemeral()

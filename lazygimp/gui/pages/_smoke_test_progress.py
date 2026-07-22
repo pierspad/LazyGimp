@@ -1,8 +1,8 @@
-"""Exercises InstallProgressPage (lazygimp/gui_qt/pages/progress.py)
+"""Exercises InstallProgressPage (lazygimp/gui/pages/progress.py)
 inside a real QApplication and confirms nothing raises. Not a UI test
 (no display needed) — run with:
 
-    QT_QPA_PLATFORM=offscreen python3 -m lazygimp.gui_qt.pages._smoke_test_progress
+    QT_QPA_PLATFORM=offscreen python3 -m lazygimp.gui.pages._smoke_test_progress
 
 Two passes:
 
@@ -30,9 +30,9 @@ def main() -> int:
     from PySide6.QtCore import QObject, Qt, QTimer, Signal
     from PySide6.QtWidgets import QApplication, QMainWindow, QPlainTextEdit, QVBoxLayout, QWidget
 
-    from lazygimp.gui_qt import theme
-    from lazygimp.gui_qt.pages.progress import InstallProgressPage
-    from lazygimp.gui_qt.widgets import RoundedButton
+    from lazygimp.gui import theme
+    from lazygimp.gui.pages.progress import InstallProgressPage
+    from lazygimp.gui.widgets import RoundedButton
     from lazygimp.job import Job
     from lazygimp.plan import PlannedAction
 
@@ -114,7 +114,7 @@ def main() -> int:
     host1.selected_step_idx = 0
     host1._spin_frame = 0
     host1._card_icon_labels = [None, None]
-    from lazygimp.gui_qt.pages.progress import _ProgressBridge
+    from lazygimp.gui.pages.progress import _ProgressBridge
     host1._bridge = _ProgressBridge(host1._bump_exec_progress)
     host1._spinner_timer = QTimer()
     host1._spinner_timer.timeout.connect(host1._tick_spinner)

@@ -1,11 +1,11 @@
 """Builds landing.py's and uninstall.py's top-level screens inside a real
 (offscreen) QApplication and confirms nothing raises. Companion to
-``lazygimp/gui_qt/_smoke_test.py`` (which only covers the foundation
+``lazygimp/gui/_smoke_test.py`` (which only covers the foundation
 widgets) — this one exercises the two ported page mixins themselves.
 
 Run with:
 
-    QT_QPA_PLATFORM=offscreen python3 -m lazygimp.gui_qt.pages._smoke_test_landing_uninstall
+    QT_QPA_PLATFORM=offscreen python3 -m lazygimp.gui.pages._smoke_test_landing_uninstall
 
 Uses a minimal FakeApp that composes LandingPage + UninstallPage the same
 way LazyGimpApp will (see gui/app.py), stubbing out only what the real
@@ -30,9 +30,9 @@ import sys
 def main() -> int:
     from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QWidget
 
-    from lazygimp.gui_qt import theme
-    from lazygimp.gui_qt.pages.landing import LandingPage
-    from lazygimp.gui_qt.pages.uninstall import UninstallPage
+    from lazygimp.gui import theme
+    from lazygimp.gui.pages.landing import LandingPage
+    from lazygimp.gui.pages.uninstall import UninstallPage
     from lazygimp.hardware import detect_hardware
 
     class FakeApp(LandingPage, UninstallPage):
@@ -89,7 +89,6 @@ def main() -> int:
     assert keep_widget.parent() is root_frame, "_preserve widget was destroyed by show_landing()"
 
     # ephemeral checkbox toggle shouldn't raise
-    from PySide6.QtCore import Qt
     ephemeral_checkboxes = [w for w in root_frame.findChildren(QWidget)
                              if type(w).__name__ == "ModernCheckbox"]
     assert ephemeral_checkboxes, "ephemeral ModernCheckbox not found in landing tree"

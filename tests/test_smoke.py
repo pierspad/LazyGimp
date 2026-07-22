@@ -22,9 +22,9 @@ class ImportTests(unittest.TestCase):
             importlib.import_module(f"lazygimp.{mod}")
 
     def test_gui_is_optional(self):
-        """gui must import (not crash) even when Tk is unavailable."""
+        """gui must import (not crash) even when PySide6 is unavailable."""
         from lazygimp import compat, gui  # noqa: F401
-        self.assertIsInstance(compat._TK_OK, bool)
+        self.assertIsInstance(compat._PYSIDE_OK, bool)
 
 
 class ModelRegistryTests(unittest.TestCase):

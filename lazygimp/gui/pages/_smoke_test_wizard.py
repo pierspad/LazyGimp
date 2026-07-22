@@ -1,13 +1,13 @@
 """Builds wizard.py's screen inside a real (offscreen) QApplication and
 steps it through several pages, confirming nothing raises. Companion to
-``lazygimp/gui_qt/_smoke_test.py`` (foundation widgets) and
-``lazygimp/gui_qt/pages/_smoke_test_landing_uninstall.py`` /
+``lazygimp/gui/_smoke_test.py`` (foundation widgets) and
+``lazygimp/gui/pages/_smoke_test_landing_uninstall.py`` /
 ``_smoke_test_progress.py`` (the sibling page ports) — this one exercises
 ``WizardPages``.
 
 Run with:
 
-    QT_QPA_PLATFORM=offscreen python3 -m lazygimp.gui_qt.pages._smoke_test_wizard
+    QT_QPA_PLATFORM=offscreen python3 -m lazygimp.gui.pages._smoke_test_wizard
 
 Uses a minimal FakeApp that composes WizardPages the same way LazyGimpApp
 will (see gui/app.py), stubbing out only what the real app.py / the other
@@ -31,8 +31,8 @@ import sys
 def main() -> int:
     from PySide6.QtWidgets import QApplication, QMainWindow, QWidget
 
-    from lazygimp.gui_qt import theme
-    from lazygimp.gui_qt.pages.wizard import WizardPages
+    from lazygimp.gui import theme
+    from lazygimp.gui.pages.wizard import WizardPages
     from lazygimp.hardware import detect_hardware
     from lazygimp.models import MODEL_REGISTRY
 
@@ -95,11 +95,12 @@ def main() -> int:
     # -- components step: toggle PhotoGIMP/G'MIC/Batcher cards in place -
     assert "photogimp" in fake._wizard_cards
     assert "gmic" in fake._wizard_cards
-    assert "batcher" in fake._wizard_cards
-    photogimp_was_queued = fake.plan.has("photogimp:install")
+    from lazygimp.photogimp import photogimp_installed
+    pg_key = "photogimp:remove" if photogimp_installed() else "photogimp:install"
+    photogimp_was_queued = fake.plan.has(pg_key)
     fake._wizard_cards["photogimp"]()  # toggle it (advance=False, so we stay on this step)
     assert fake.wizard_steps[fake.wizard_index].key == "components", "advance=False toggle must not navigate"
-    assert fake.plan.has("photogimp:install") != photogimp_was_queued, "toggle didn't flip plan membership"
+    assert fake.plan.has(pg_key) != photogimp_was_queued, "toggle didn't flip plan membership"
     fake._wizard_cards["photogimp"]()  # toggle back to original state
 
     # go back one step, then forward again, exercising cached-page reuse

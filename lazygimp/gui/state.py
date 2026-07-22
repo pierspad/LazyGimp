@@ -1,13 +1,14 @@
-"""What's on this system, in the uninstall screen's vocabulary."""
+"""Detection helper for installed components on the system."""
 
 from __future__ import annotations
+
+import os
 
 from ..constants import APPIMAGE_DIR, BACKEND_DIR
 from ..distro import detect_distro
 from ..gimp_install import appimage_present, gimp_native_installed
 from ..photogimp import photogimp_installed
 from ..plugins import batcher_installed, segany_plugin_installed
-import os
 
 
 def detect_targets() -> list[tuple[str, str, str]]:
@@ -26,6 +27,7 @@ def detect_targets() -> list[tuple[str, str, str]]:
         targets.append(("sam", "SAM plug-in + Python backend + models",
                          f"plug-ins/seganyplugin and {BACKEND_DIR} — only these"))
     return targets
+
 
 def anything_installed() -> bool:
     return bool(detect_targets())
