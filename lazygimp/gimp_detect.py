@@ -78,14 +78,16 @@ def gimp_config_dir(version_hint: Optional[str] = None) -> Optional[str]:
         m = re.search(r"(\d+)\.(\d+)", version_hint)
         if m:
             return os.path.join(base, f"{m.group(1)}.{m.group(2)}")
-    live = gimp_live_config_dir()
-    if live:
-        return live
     ver = gimp_version_string()
     if ver:
         return os.path.join(base, ver)
     dirs = gimp_version_dirs()
-    return dirs[-1] if dirs else None
+    if dirs:
+        return dirs[-1]
+    live = gimp_live_config_dir()
+    if live:
+        return live
+    return os.path.join(base, "3.0")
 
 
 def gimp_plugins_dir(version_hint: Optional[str] = None) -> Optional[str]:

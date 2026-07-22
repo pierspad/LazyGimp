@@ -44,10 +44,29 @@ def _gimp_is_running() -> bool:
     survive because GIMP never touches those, but toolrc/gimprc quietly
     revert, which looks exactly like "PhotoGIMP didn't apply"."""
     try:
-        return subprocess.run(
-            ["pgrep", "-x", "gimp|gimp-3.0|gimp-2.10"],
-            capture_output=True, timeout=5,
-        ).returncode == 0
+        res = subprocess.run(["ps", "-eo", "pid,comm,args"], capture_output=True, text=True, timeout=5)
+        if res.returncode != 0:
+            return False
+        mypid = os.getpid()
+        for line in res.stdout.splitlines()[1:]:
+            parts = line.strip().split(None, 2)
+            if len(parts) < 3:
+                continue
+            pid_str, comm, args = parts[0], parts[1], parts[2]
+            try:
+                pid = int(pid_str)
+            except ValueError:
+                continue
+            if pid == mypid:
+                continue
+            args_lower = args.lower()
+            if "lazygimp" in args_lower or "pytest" in args_lower:
+                continue
+            comm_lower = comm.lower()
+            if "gimp" in comm_lower or "gimp" in args_lower:
+                if re.search(r"\bgimp(?:-\d+\.\d+)?(?:\.bin|\.appimage)?\b", args_lower) or "org.gimp.gimp" in args_lower:
+                    return True
+        return False
     except Exception:
         return False
 
@@ -322,17 +341,17 @@ def install_photogimp(job: Job, version_hint: Optional[str] = None, gimp_command
                  "toolrc/sessionrc/gimprc to disk when it exits, which would silently "
                  "undo PhotoGIMP's layout right after this step finishes.")
         return False
-    target = gimp_config_dir(version_hint)
-    if not target:
+    primary_target = gimp_config_dir(version_hint)
+    if not primary_target:
         job.log("ERROR: cannot locate a GIMP config directory — launch GIMP once, then retry.")
         return False
-    profile_name = os.path.basename(target)
-    m = re.match(r"(\d+)\.", profile_name)
-    if m and int(m.group(1)) < 3:
-        job.log(f"ERROR: PhotoGIMP requires GIMP 3+, but the detected profile is {profile_name}")
-        return False
 
-    job.log(f"GIMP config directory: {target}")
+    targets = [primary_target]
+    for d in gimp_version_dirs():
+        if d not in targets:
+            targets.append(d)
+
+    job.log(f"GIMP config directory: {primary_target} (applying across profiles: {', '.join([os.path.basename(t) for t in targets])})")
     extracted = _photogimp_download_and_extract(job)
     if not extracted:
         return False
@@ -341,14 +360,20 @@ def install_photogimp(job: Job, version_hint: Optional[str] = None, gimp_command
         job.log("ERROR: no GIMP payload (.config/GIMP/X.Y) found in the PhotoGIMP archive.")
         return False
 
-    backup = _photogimp_backup(target)
-    if backup:
-        job.log(f"Existing configuration backed up to {backup}")
+    total_files = 0
+    for target in targets:
+        profile_name = os.path.basename(target)
+        backup = _photogimp_backup(target)
+        if backup:
+            job.log(f"Existing configuration backed up to {backup}")
 
-    count = _photogimp_apply(payload, target, job)
+        count = _photogimp_apply(payload, target, job)
+        total_files += count
+        job.log(f"PhotoGIMP layer installed ({count} files) into profile '{profile_name}'")
+
     _photogimp_install_desktop_files(extracted, gimp_command, job)
     shutil.rmtree(os.path.dirname(extracted), ignore_errors=True)
-    job.log(f"PhotoGIMP layer installed ({count} files) into {profile_name}")
+    job.log(f"PhotoGIMP layer installation complete ({total_files} total files copied across profiles)")
     return True
 
 
