@@ -1,10 +1,20 @@
-# Dependency for the PySide6 GUI engine (lazygimp/gui_qt/).
+# Dependency for the PySide6 GUI engine (lazygimp/gui_qt/), launched via
+# `installer.py --qt` / `LAZYGIMP_GUI=qt` (see lazygimp/cli.py).
 #
 # Kept in a separate file from the (currently nonexistent) core
-# requirements list on purpose: the CLI and the CustomTkinter GUI
-# (lazygimp/gui/) don't need Qt at all. Once the Qt engine replaces the
-# Tk one as the shipped GUI, this can be folded into whatever the
-# project's main dependency manifest becomes as part of the packaging
-# task — not done here since that's explicitly out of scope for this
-# phase (see lazygimp/gui_qt/README.md).
+# requirements list on purpose: the CLI and the default CustomTkinter
+# GUI (lazygimp/gui/) don't need Qt at all — only installs that want the
+# new GUI need this. Once the Qt engine replaces Tk as the *default*
+# shipped GUI (a later phase, after human review), this can be folded
+# into whatever the project's main dependency manifest becomes.
+#
+# Consumed by:
+#   - scripts/build_release_assets.sh, before the PyInstaller step (so
+#     the prebuilt lazygimp-linux-x86_64 binary bundles PySide6 and
+#     `--qt` works out of the box with no separate install step).
+#   - .github/workflows/ci.yml's `qt-gui-smoke` and `build` jobs.
+#   - a source checkout / the zipapp: `pip install -r requirements-qt.txt`
+#     manually, if you want `--qt` there (see the zipapp note in
+#     scripts/build_release_assets.sh for why it isn't bundled inside
+#     lazygimp.pyz itself).
 PySide6>=6.11

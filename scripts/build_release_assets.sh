@@ -5,8 +5,17 @@
 #
 #   lazygimp.pyz                single-file zipapp — runs anywhere with
 #                               python3 + Tk:  python3 lazygimp.pyz
+#                               (the default CustomTkinter GUI only — see
+#                               the "PACKAGING DECISION" note below for why
+#                               PySide6/--qt does NOT ride inside this one)
 #   lazygimp-linux-x86_64       PyInstaller binary — zero dependencies,
-#                               Linux x86_64 only
+#                               Linux x86_64 only, bundles BOTH GUIs
+#                               (CustomTkinter default + PySide6 --qt).
+#                               Grows measurably once PySide6 is in the
+#                               mix (see the PyInstaller step's own
+#                               comment below for the actual numbers and
+#                               why it's scoped per-submodule, not a
+#                               blanket `--collect-all PySide6`).
 #   lazygimp-src.zip            the source folder (lazygimp/ package +
 #                               installer.py launcher) — unzip and run
 #   lazygimp-<version>-src.zip  the same zip, versioned
@@ -15,12 +24,45 @@
 #
 # Invoked by semantic-release (@semantic-release/exec, see .releaserc) and
 # by the CI dry run. Requires: python3 (+python3-tk for a useful binary),
-# pyinstaller, zip.
+# pyinstaller, zip, and — new as of the PySide6 rewrite's Phase 3 — the
+# packages in requirements-qt.txt (installed just before the PyInstaller
+# step below).
 #
 # STAGE_ONLY=1 skips the PyInstaller step (the slow one): everything else —
 # staging, version stamping, zipapp, source zips — still runs, which is
 # exactly the part that can break on file moves. The pre-push git hook uses
 # this to catch "cannot stat" style failures before CI does.
+#
+# --- PACKAGING DECISION: PySide6 and the zipapp -----------------------------
+# PySide6 is a ~100-150MB compiled wheel (Qt itself, not stdlib) — nothing
+# like customtkinter, which is pure Python + font/JSON assets and rides
+# inside lazygimp.pyz for free. Two ways to give the zipapp a `--qt` option
+# were on the table:
+#
+#   (a) [CHOSEN] Leave lazygimp.pyz as the zero-dependency fallback it
+#       already is — Tk/CustomTkinter only, exactly as before. `--qt` is
+#       still importable from the zipapp (lazygimp/gui_qt/ is plain-Python
+#       source, harmless dead weight when unused, and it's all inside
+#       lazygimp/ already so it rides along with everything else `cp -a`
+#       stages), but if PySide6 isn't already on the interpreter running
+#       the .pyz, `--qt` fails fast with a one-line "pip install -r
+#       requirements-qt.txt" message (see lazygimp/gui_qt/__init__.py's
+#       launch_gui_qt()) instead of silently doing something surprising.
+#       Users who want Qt from a zipapp-style single file should grab the
+#       PyInstaller binary instead, which bundles it.
+#   (b) [REJECTED] Have the zipapp `pip install PySide6` itself on first
+#       `--qt` use, falling back to Tk if that fails/is declined. Rejected:
+#       a ~100MB unattended network install the first time someone
+#       double-clicks a *.pyz is exactly the kind of surprise a
+#       zero-dependency zipapp exists to avoid — it can fail behind a
+#       firewall, silently pick the wrong `pip` (which Python owns the
+#       target site-packages when the .pyz was invoked with a random
+#       `python3` off $PATH?), or take minutes with no progress indication
+#       before the GUI even opens. Explicit and fast-failing (a) is more
+#       predictable for someone who just wants the installer to open.
+#
+# Flag this packaging call out to whoever reviews this branch — it's a
+# real product trade-off, not a mechanical porting detail.
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
@@ -116,6 +158,12 @@ sed -i "s/^__version__ = .*/__version__ = \"${VERSION}\"/" \
   "${BUNDLE}/lazygimp/__init__.py"
 
 # --- 1. zipapp: one .pyz file, runs on any python3 with Tk -----------------
+# Tk/CustomTkinter (the default GUI) only — see the "PACKAGING DECISION"
+# note up top for why PySide6 (--qt) is deliberately NOT bundled/installed
+# here. lazygimp/gui_qt/ still gets staged along with the rest of the
+# lazygimp package below (it's plain-Python source, no extra weight to
+# speak of) so `--qt` at least fails with a clear, fast message rather than
+# an ImportError stack trace if someone tries it without PySide6 installed.
 PYZ_STAGE="${STAGE}/pyz"
 mkdir -p "$PYZ_STAGE"
 cp -a "${BUNDLE}/lazygimp" "${BUNDLE}/gimpsam" "$PYZ_STAGE/"
@@ -127,8 +175,32 @@ python3 -m zipapp "$PYZ_STAGE" \
 chmod +x "${DIST}/lazygimp.pyz"
 
 # --- 2. PyInstaller: self-contained Linux binary ---------------------------
-# customtkinter (pure python + json/font assets) and Pillow ship inside the
-# binary, so the downloaded file needs nothing at all on the host system.
+# customtkinter (pure python + json/font assets), Pillow AND PySide6/Qt now
+# all ship inside the binary, so the downloaded file needs nothing at all on
+# the host system for either GUI (--qt or default).
+#
+# PySide6 is collected per-submodule (QtCore/QtGui/QtWidgets — the only
+# three lazygimp/gui_qt/ actually imports; verified with
+# `grep -rhoE "from PySide6\.[A-Za-z0-9_]+" lazygimp/gui_qt`) rather than a
+# blanket `--collect-all PySide6`. That blanket form pulls in EVERYTHING in
+# the wheel — QtWebEngine, Qt Quick/QML, Multimedia, Bluetooth, PDF, SQL,
+# ... — none of which this app uses; measured locally it bloats the binary
+# to ~750MB+ for zero benefit. The scoped form below still pulls in
+# everything QtCore/QtGui/QtWidgets need at runtime (platform plugins,
+# styles, etc. — PyInstaller's own PySide6 hooks handle that), just not the
+# unrelated modules. Measured locally (--onedir, uncompressed): ~220MB,
+# roughly 650MB less than the blanket approach; the final --onefile binary
+# here compresses further. Re-verify this if lazygimp/gui_qt/ ever starts
+# importing from another PySide6 submodule (QtSvg, QtNetwork, ...) — add it
+# to the three --collect-all lines below, don't switch back to the blanket
+# form.
+#
+# PySide6 itself is NOT pip-installed by this script (same convention as
+# pyinstaller/customtkinter/pillow, none of which this script installs
+# either) — the caller is responsible for having requirements-qt.txt
+# installed first. See .github/workflows/ci.yml's `build` job and
+# .github/workflows/release.yml's "Install asset build prerequisites"
+# step for where that happens in practice.
 [[ "$STAGE_ONLY" == "1" ]] || pyinstaller --onefile --clean --noconfirm \
   --name "lazygimp-linux-x86_64" \
   --distpath "$DIST" \
@@ -151,6 +223,10 @@ chmod +x "${DIST}/lazygimp.pyz"
   --collect-submodules gimpsam \
   --collect-all customtkinter \
   --collect-submodules PIL \
+  --collect-submodules lazygimp.gui_qt \
+  --collect-all PySide6.QtCore \
+  --collect-all PySide6.QtGui \
+  --collect-all PySide6.QtWidgets \
   "${BUNDLE}/installer.py"
 
 # --- 3. source zip: the folder with everything needed to run ---------------

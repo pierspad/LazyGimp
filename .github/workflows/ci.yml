@@ -4,7 +4,11 @@
 #   * unit/smoke tests on every supported Python (GUI import, CLI, registry)
 #   * a GUI smoke test that opens the real Tk app under Xvfb and walks
 #     every screen (the only place rendering regressions can be caught)
-#   * a real build of the release assets (zipapp + PyInstaller binary)
+#   * a GUI smoke test that builds the real PySide6 app offscreen (no Xvfb
+#     needed — QT_QPA_PLATFORM=offscreen) and walks every screen too
+#   * a real build of the release assets (zipapp + PyInstaller binary,
+#     the latter now bundling PySide6 too — see requirements-qt.txt and
+#     scripts/build_release_assets.sh's "PACKAGING DECISION" note)
 #   * actionlint on the workflows themselves
 #   * PSScriptAnalyzer on the Windows installer
 # ---------------------------------------------------------------------------
@@ -72,6 +76,37 @@ jobs:
       - name: Open the real GUI and walk every screen
         run: xvfb-run -a python tests/gui_smoke.py
 
+  qt-gui-smoke:
+    name: GUI smoke (PySide6, offscreen)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install PySide6 + the system libs it links against
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y \
+            libegl1 libgl1 libglx0 libopengl0 libxkbcommon0 \
+            libxkbcommon-x11-0 libxcb-cursor0 libgbm1
+          pip install -r requirements-qt.txt
+
+      - name: Foundation + per-page smoke tests (built independently, earlier phases)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -m lazygimp.gui_qt._smoke_test
+          python -m lazygimp.gui_qt.pages._smoke_test_landing_uninstall
+          python -m lazygimp.gui_qt.pages._smoke_test_wizard
+          python -m lazygimp.gui_qt.pages._smoke_test_progress
+
+      - name: Full app integration test (all four pages composed via app.py)
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m unittest tests.test_gui_qt_app -v
+
   build:
     name: Build release assets (dry run)
     runs-on: ubuntu-latest
@@ -85,7 +120,7 @@ jobs:
       - name: Install build prerequisites
         run: |
           sudo apt-get update -q && sudo apt-get install -y python3-tk zip
-          pip install pyinstaller customtkinter pillow
+          pip install pyinstaller customtkinter pillow -r requirements-qt.txt
 
       - name: Build assets
         env:

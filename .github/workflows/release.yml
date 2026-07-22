@@ -44,7 +44,7 @@ jobs:
       - name: Install asset build prerequisites
         run: |
           sudo apt-get update -q && sudo apt-get install -y python3-tk zip
-          pip install pyinstaller customtkinter pillow
+          pip install pyinstaller customtkinter pillow -r requirements-qt.txt
 
       - name: Install release tooling
         run: npm install --no-audit --no-fund
