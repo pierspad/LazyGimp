@@ -18,7 +18,7 @@ permissions:
 
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   release:
@@ -44,7 +44,7 @@ jobs:
       - name: Install asset build prerequisites
         run: |
           sudo apt-get update -q && sudo apt-get install -y python3-tk zip
-          pip install pyinstaller customtkinter pillow -r requirements-qt.txt
+          pip install pyinstaller pillow -r requirements.txt
 
       - name: Install release tooling
         run: npm install --no-audit --no-fund
