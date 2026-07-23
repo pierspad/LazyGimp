@@ -1,3 +1,9 @@
+## [2.2.1](https://github.com/pierspad/LazyGimp/compare/v2.2.0...v2.2.1) (2026-07-23)
+
+### 🐛 Bug Fixes
+
+* **windows:** resolve termios/pty import error on Windows and simplify release asset names ([41b08cb](https://github.com/pierspad/LazyGimp/commit/41b08cbdc401b4c9599343dad35b3160cdb92f52))
+
 ## [2.2.0](https://github.com/pierspad/LazyGimp/compare/v2.1.1...v2.2.0) (2026-07-23)
 
 ### ✨ Features
