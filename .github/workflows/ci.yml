@@ -137,13 +137,24 @@ jobs:
           python-version: "3.12"
 
       - name: Install build prerequisites
+        shell: bash
         run: |
+          if [[ "${RUNNER_OS:-}" == "Linux" ]]; then
+            sudo apt-get update -q && sudo apt-get install -y python3-tk zip
+          fi
           pip install pyinstaller pillow -r requirements.txt
 
       - name: Build Windows Executable
-        run: |
-          pyinstaller --onefile --clean --noconfirm --name "LazyGimp-Installer-Windows.exe" --paths lazygimp --hidden-import gimpsam --collect-submodules PIL --collect-submodules lazygimp.gui --collect-all PySide6.QtCore --collect-all PySide6.QtGui --collect-all PySide6.QtWidgets installer.py
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/build_release_assets.sh 0.0.0-ci
 
       - name: Test Windows Executable Help Output
+        shell: bash
         run: |
-          .\dist\LazyGimp-Installer-Windows.exe --help
+          if [[ -f "./dist/LazyGimp-Installer-Windows.exe" ]]; then
+            ./dist/LazyGimp-Installer-Windows.exe --help
+          else
+            ./dist/LazyGimp-Installer-Linux --help
+          fi
