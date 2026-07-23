@@ -593,11 +593,15 @@ class WizardPages:
             if not is_card_enabled:
                 show_snackbar(self, disabled_reason or "Not available", "warn")
                 return
-            if installed and not self.plan.has(f"{key}:remove"):
-                show_snackbar(self, f"{title} is already installed on your system", "info")
-                return
             now_queued = self.plan.toggle(PlannedAction(action_key, action_label, action_kind, action_run))
-            if advance and now_queued:
+            if installed:
+                msg = f"{title} queued for removal" if now_queued else f"{title} kept installed"
+                tone = "warn" if now_queued else "info"
+                show_snackbar(self, msg, tone)
+                if self._wizard_next_btn is not None:
+                    self._wizard_next_btn.set_enabled(self._wizard_can_advance())
+                update_card_ui()
+            elif advance and now_queued:
                 self._wizard_advance()
             else:
                 if self._wizard_next_btn is not None:
