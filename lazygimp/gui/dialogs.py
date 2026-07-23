@@ -13,10 +13,11 @@ from __future__ import annotations
 
 import threading
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
-    QDialog, QHBoxLayout, QLabel, QLineEdit, QVBoxLayout, QWidget,
+    QDialog, QHBoxLayout, QLabel, QLineEdit, QProgressBar, QVBoxLayout, QWidget,
 )
+import time
 
 from .icons import icon_label
 from .theme import BG, CARD_BG, F_BODY, F_DIALOG_TITLE, TEXT, TEXT_MUTED, TONE_COLORS, qfont
@@ -109,44 +110,114 @@ def themed_confirm(parent, title, message) -> bool:
     return bool(themed_dialog(parent, title, message, kind="confirm"))
 
 
-def show_snackbar(app, message: str, tone: str = "warn", duration_ms: int = 2200):
-    """Transient bottom-of-window toast. `app` is expected to expose
-    `.window` (the QMainWindow/QWidget top-level) — the Qt counterpart
-    of the Tk engine's `app.root`."""
-    from PySide6.QtCore import QTimer
+_ACTIVE_SNACKBARS: list[QDialog] = []
 
+
+def _reposition_snackbars():
+    global _ACTIVE_SNACKBARS
+    _ACTIVE_SNACKBARS = [w for w in _ACTIVE_SNACKBARS if w.isVisible()]
+    if not _ACTIVE_SNACKBARS:
+        return
+
+    base_offset_y = 75
+    gap = 8
+    current_offset = base_offset_y
+
+    for win in reversed(_ACTIVE_SNACKBARS):
+        parent_window = getattr(win, "_parent_window", None)
+        if parent_window is None:
+            continue
+        geo = parent_window.geometry()
+        top_left = parent_window.mapToGlobal(parent_window.rect().topLeft())
+        x = top_left.x() + max(0, (geo.width() - win.width()) // 2)
+        y = top_left.y() + geo.height() - current_offset - win.height()
+        win.move(x, y)
+        current_offset += win.height() + gap
+
+
+def show_snackbar(app, message: str, tone: str = "warn", duration_ms: int = 1500):
+    """Transient bottom-of-window toast with countdown progress bar and vertical stacking."""
     bgc, fg = TONE_COLORS.get(tone, TONE_COLORS["warn"])
-    parent_window = getattr(app, "window", None) or getattr(app, "root", None)
+    if isinstance(app, QWidget):
+        parent_window = app
+    elif hasattr(app, "window") and isinstance(getattr(app, "window"), QWidget):
+        parent_window = getattr(app, "window")
+    elif hasattr(app, "root") and isinstance(getattr(app, "root"), QWidget):
+        parent_window = getattr(app, "root")
+    else:
+        parent_window = None
 
     win = QDialog(parent_window)
     win.setWindowFlags(Qt.ToolTip | Qt.FramelessWindowHint)
     win.setAttribute(Qt.WA_TranslucentBackground, True)
+    win._parent_window = parent_window
 
     outer = QVBoxLayout(win)
     outer.setContentsMargins(0, 0, 0, 0)
-    card = RoundedCard(win, bg=bgc, border=bgc, radius=14, pad=14)
+    card = RoundedCard(win, bg=bgc, border=bgc, radius=14, pad=12)
     outer.addWidget(card)
 
-    row_layout = QHBoxLayout(card.body)
+    card_layout = QVBoxLayout(card.body)
+    card_layout.setContentsMargins(0, 0, 0, 0)
+    card_layout.setSpacing(6)
+
+    row = QWidget(card.body)
+    row_layout = QHBoxLayout(row)
     row_layout.setContentsMargins(0, 0, 0, 0)
     row_layout.setSpacing(8)
+
     icon_kind = "warn" if tone == "warn" else ("x" if tone == "error" else "check")
-    row_layout.addWidget(icon_label(card.body, icon_kind, color=fg, size=18))
-    msg = QLabel(message, card.body)
+    row_layout.addWidget(icon_label(row, icon_kind, color=fg, size=18))
+    msg = QLabel(message, row)
     msg.setStyleSheet(f"color: {fg}; background: transparent; font-weight: 600;")
     row_layout.addWidget(msg)
+    card_layout.addWidget(row)
+
+    progress_bar = QProgressBar(card.body)
+    progress_bar.setRange(0, 1000)
+    progress_bar.setValue(1000)
+    progress_bar.setTextVisible(False)
+    progress_bar.setFixedHeight(3)
+    progress_bar.setStyleSheet(f"""
+        QProgressBar {{
+            background-color: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 1.5px;
+        }}
+        QProgressBar::chunk {{
+            background-color: {fg};
+            border-radius: 1.5px;
+        }}
+    """)
+    card_layout.addWidget(progress_bar)
+
     card.finalize()
+
+    _ACTIVE_SNACKBARS.append(win)
 
     win.show()
     win.adjustSize()
-    if parent_window is not None:
-        geo = parent_window.geometry()
-        top_left = parent_window.mapToGlobal(parent_window.rect().topLeft())
-        x = top_left.x() + max(0, (geo.width() - win.width()) // 2)
-        y = top_left.y() + geo.height() - 110
-        win.move(x, y)
+    _reposition_snackbars()
 
-    QTimer.singleShot(duration_ms, win.close)
+    start_time = time.time()
+
+    def close_toast():
+        timer.stop()
+        win.close()
+        _reposition_snackbars()
+
+    def update_progress():
+        elapsed_ms = (time.time() - start_time) * 1000
+        remaining_ratio = max(0.0, 1.0 - (elapsed_ms / duration_ms))
+        progress_bar.setValue(int(remaining_ratio * 1000))
+        if elapsed_ms >= duration_ms:
+            close_toast()
+
+    timer = QTimer(win)
+    timer.setInterval(20)
+    timer.timeout.connect(update_progress)
+    timer.start()
+
     return win
 
 
