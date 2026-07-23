@@ -8,18 +8,35 @@ import os
 # file never orphans an already-downloaded multi-GB model.
 # ---------------------------------------------------------------------------
 
+import sys
+
 HOME = os.path.expanduser("~")
-XDG_CONFIG_HOME = os.environ.get("XDG_CONFIG_HOME") or os.path.join(HOME, ".config")
-XDG_DATA_HOME = os.environ.get("XDG_DATA_HOME") or os.path.join(HOME, ".local", "share")
-XDG_STATE_HOME = os.environ.get("XDG_STATE_HOME") or os.path.join(HOME, ".local", "state")
-XDG_CACHE_HOME = os.environ.get("XDG_CACHE_HOME") or os.path.join(HOME, ".cache")
+IS_WINDOWS = sys.platform == "win32"
+
+if IS_WINDOWS:
+    APPDATA = os.environ.get("APPDATA") or os.path.join(HOME, "AppData", "Roaming")
+    LOCALAPPDATA = os.environ.get("LOCALAPPDATA") or os.path.join(HOME, "AppData", "Local")
+    XDG_CONFIG_HOME = os.environ.get("XDG_CONFIG_HOME") or APPDATA
+    XDG_DATA_HOME = os.environ.get("XDG_DATA_HOME") or LOCALAPPDATA
+    XDG_STATE_HOME = os.environ.get("XDG_STATE_HOME") or os.path.join(LOCALAPPDATA, "lazygimp", "state")
+    XDG_CACHE_HOME = os.environ.get("XDG_CACHE_HOME") or os.path.join(LOCALAPPDATA, "lazygimp", "cache")
+else:
+    XDG_CONFIG_HOME = os.environ.get("XDG_CONFIG_HOME") or os.path.join(HOME, ".config")
+    XDG_DATA_HOME = os.environ.get("XDG_DATA_HOME") or os.path.join(HOME, ".local", "share")
+    XDG_STATE_HOME = os.environ.get("XDG_STATE_HOME") or os.path.join(HOME, ".local", "state")
+    XDG_CACHE_HOME = os.environ.get("XDG_CACHE_HOME") or os.path.join(HOME, ".cache")
 
 STATE_DIR = os.path.join(XDG_STATE_HOME, "lazygimp")
 BACKEND_DIR = os.path.join(XDG_DATA_HOME, "lazygimp", "segany")
 VENV_DIR = os.path.join(BACKEND_DIR, "venv")
 MODELS_DIR = os.path.join(BACKEND_DIR, "models")
-VENV_PYTHON = os.path.join(VENV_DIR, "bin", "python3")
-VENV_PIP = os.path.join(VENV_DIR, "bin", "pip")
+
+if IS_WINDOWS:
+    VENV_PYTHON = os.path.join(VENV_DIR, "Scripts", "python.exe")
+    VENV_PIP = os.path.join(VENV_DIR, "Scripts", "pip.exe")
+else:
+    VENV_PYTHON = os.path.join(VENV_DIR, "bin", "python3")
+    VENV_PIP = os.path.join(VENV_DIR, "bin", "pip")
 
 PHOTOGIMP_MANIFEST = ".lazygimp-photogimp.manifest"
 PHOTOGIMP_EXCLUDE = {"pluginrc"}  # GIMP's own per-machine plug-in cache — never ship it

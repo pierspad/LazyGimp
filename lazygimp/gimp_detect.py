@@ -14,8 +14,25 @@ import subprocess
 # resolved at runtime.
 # ---------------------------------------------------------------------------
 
+import sys
+
 def find_gimp_binary() -> Optional[str]:
-    return shutil.which("gimp") or shutil.which("gimp-3.0") or shutil.which("gimp-2.10") or shutil.which("gimp.exe") or shutil.which("gimp-3.0.exe")
+    found = (shutil.which("gimp") or shutil.which("gimp-3.0") or shutil.which("gimp-2.10") or
+             shutil.which("gimp.exe") or shutil.which("gimp-3.0.exe"))
+    if found:
+        return found
+    if sys.platform == "win32":
+        for pf in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)")):
+            if not pf:
+                continue
+            for sub in (os.path.join("GIMP 3", "bin", "gimp-3.0.exe"),
+                        os.path.join("GIMP 3", "bin", "gimp.exe"),
+                        os.path.join("GIMP 2", "bin", "gimp-2.10.exe"),
+                        os.path.join("GIMP 2", "bin", "gimp.exe")):
+                candidate = os.path.join(pf, sub)
+                if os.path.isfile(candidate):
+                    return candidate
+    return None
 
 
 def flatpak_gimp_installed() -> bool:

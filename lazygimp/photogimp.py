@@ -34,15 +34,14 @@ def photogimp_installed(target: Optional[str] = None) -> bool:
 
 
 def _gimp_is_running() -> bool:
-    """True if a GIMP process (native or AppImage) is currently alive.
-
-    GIMP rewrites toolrc/sessionrc/gimprc back to disk on exit to persist
-    whatever tool order/dock layout it currently has in memory. If we lay
-    PhotoGIMP's files down while an existing GIMP instance is still open,
-    that instance's later, unrelated exit will silently overwrite them
-    with its own (stock) state — the assets (splash, icons, .desktop)
-    survive because GIMP never touches those, but toolrc/gimprc quietly
-    revert, which looks exactly like "PhotoGIMP didn't apply"."""
+    """True if a GIMP process (native or AppImage) is currently alive."""
+    import sys
+    if sys.platform == "win32":
+        try:
+            res = subprocess.run(["tasklist", "/FI", "IMAGENAME eq gimp*"], capture_output=True, text=True, timeout=5)
+            return "gimp" in res.stdout.lower()
+        except Exception:
+            return False
     try:
         res = subprocess.run(["ps", "-eo", "pid,comm,args"], capture_output=True, text=True, timeout=5)
         if res.returncode != 0:
@@ -184,7 +183,10 @@ def _photogimp_apply(payload: str, target: str, job: Job) -> int:
     return count
 
 
-def _photogimp_install_desktop_files(extracted: str, gimp_command: Optional[str], job: Job) -> None:
+def _photogimp_install_desktop_files(extracted: str, gimp_command: Optional[list[str] | str], job: Job) -> None:
+    import sys
+    if sys.platform == "win32":
+        return
     share = None
     for root, dirs, _files in os.walk(extracted):
         if root.replace(os.sep, "/").endswith("/.local/share"):
@@ -297,6 +299,10 @@ def repair_desktop_integration(job: Job) -> bool:
     like install_photogimp() does at the end of a full run. Safe to run any
     time, does not touch the PhotoGIMP payload/config files at all — only
     the two .desktop files and the icon cache."""
+    import sys
+    if sys.platform == "win32":
+        job.log("Desktop integration repair is not needed on Windows.")
+        return True
     apps_dir = os.path.join(XDG_DATA_HOME, "applications")
     real_file = None
     for f in glob.glob(os.path.join(apps_dir, "*.desktop")):
