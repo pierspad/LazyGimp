@@ -184,9 +184,10 @@ class UninstallPage:
         else:
             card = RoundedCard(content, pad=16, radius=14)
             content_layout.addWidget(card)
+            card_layout = QVBoxLayout(card.body)
             empty_lbl = QLabel("Nothing found to remove.", card.body)
             empty_lbl.setStyleSheet(f"color: {TEXT_MUTED}; background: transparent;")
-            card.body.layout().addWidget(empty_lbl)
+            card_layout.addWidget(empty_lbl)
             card.finalize()
 
         content_layout.addStretch(1)

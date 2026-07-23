@@ -524,7 +524,15 @@ class InstallProgressPage:
         if not (0 <= idx < self.exec_total):
             return
 
-        self.step_logs[idx].extend(msgs)
+        for msg in msgs:
+            is_prog = ("Installing " in msg and "%" in msg) or ("Downloading " in msg and "%" in msg)
+            if is_prog and self.step_logs[idx]:
+                last = self.step_logs[idx][-1]
+                if ("Installing " in last and "%" in last) or ("Downloading " in last and "%" in last):
+                    self.step_logs[idx][-1] = msg
+                    continue
+            self.step_logs[idx].append(msg)
+
         del self.step_logs[idx][:-_MAX_LOG_LINES]  # keep at most N lines per step
 
         # Heuristic failure detection from log text
@@ -540,10 +548,10 @@ class InstallProgressPage:
                 self.step_statuses[idx] = "failed"
                 self._rebuild_cards_inplace()
 
-        # If user is watching this step, append live to the textbox
+        # If user is watching this step, update live in the textbox
         if self.selected_step_idx == idx:
             if hasattr(self, "exec_log_text") and _widget_alive(self.exec_log_text):
-                self.exec_log_text.appendPlainText("\n".join(msgs))
+                self.exec_log_text.setPlainText("\n".join(self.step_logs[idx]))
                 self._scroll_log_to_end()
 
     # ------------------------------------------------------------------

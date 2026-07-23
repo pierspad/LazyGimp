@@ -75,10 +75,10 @@ from PySide6.QtWidgets import (
 
 from ...constants import GMIC_DOWNLOAD_PAGE
 from ...distro import detect_distro
-from ...gimp_detect import find_gimp_binary, find_gimp_command
+from ...gimp_detect import find_gimp_binary, find_gimp_command, flatpak_gimp_installed
 from ...gimp_install import (
-    appimage_present, flatpak_present, gimp_native_installed, gmic_available_on_this_release, gmic_installed,
-    install_gimp_appimage, install_gimp_package_manager, install_gmic_only, remove_gmic_only,
+    flatpak_present, gimp_native_installed, gmic_available_on_this_release, gmic_installed,
+    install_gimp_flatpak, install_gimp_package_manager, install_gmic_only, remove_gmic_only,
 )
 from ...hardware import recommended_model_key, recommended_torch_index
 from ...job import Job
@@ -208,7 +208,7 @@ class _StringVar:
 
 _ACTION_SORT_KEY_ORDER = [
     "gimp_install_pm",
-    "gimp_install_appimage",
+    "gimp_install_flatpak",
     "photogimp:install", "photogimp:remove",
     "gmic:install", "gmic:remove",
     "batcher:install", "batcher:remove",
@@ -283,7 +283,12 @@ class WizardPages:
         self.plan = InstallPlan()
 
         # Preselect defaults on startup.
-        if not (gimp_native_installed() or appimage_present() or find_gimp_binary()):
+        if flatpak_present() and not gimp_native_installed():
+            self.selected_gimp_target = "flatpak"
+        else:
+            self.selected_gimp_target = "pm"
+
+        if not (gimp_native_installed() or flatpak_present() or find_gimp_binary()):
             if detect_distro():
                 self.plan.add(PlannedAction(
                     "gimp_install_pm", "Install GIMP (package manager)", "install",
@@ -292,7 +297,7 @@ class WizardPages:
         if not photogimp_installed():
             self.plan.add(PlannedAction(
                 "photogimp:install", "Install PhotoGIMP", "install",
-                lambda job: install_photogimp(job, gimp_command=(find_gimp_command() or [None])[0])))
+                lambda job: install_photogimp(job, gimp_command=find_gimp_command())))
 
         if gmic_available_on_this_release() and not gmic_installed():
             self.plan.add(PlannedAction("gmic:install", "Install G'MIC", "install",
@@ -345,7 +350,7 @@ class WizardPages:
 
     def _build_wizard_steps(self) -> list[WizardStep]:
         steps = []
-        if not (gimp_native_installed() or appimage_present() or find_gimp_binary()):
+        if not (gimp_native_installed() or flatpak_present() or find_gimp_binary()):
             steps.append(WizardStep("gimp", "GIMP (prerequisite)", prerequisite=True))
         steps.append(WizardStep("components", "Select which plugin you want to add"))
         steps.append(WizardStep("sam", "SAM (segmentation models)"))
@@ -487,7 +492,8 @@ class WizardPages:
     def _wizard_can_advance(self) -> bool:
         step = self.wizard_steps[self.wizard_index]
         if step.key == "gimp":
-            return self.plan.has("gimp_install_pm") or self.plan.has("gimp_install_appimage")
+            return (self.plan.has("gimp_install_pm") or self.plan.has("gimp_install_flatpak")
+                    or getattr(self, "selected_gimp_target", None) is not None)
         return True
 
     def _wizard_advance(self):
@@ -711,8 +717,9 @@ class WizardPages:
         fltpk = flatpak_present()
         distro = detect_distro()
 
-        pm_selected = self.plan.has("gimp_install_pm")
-        fp_selected = self.plan.has("gimp_install_flatpak")
+        selected_target = getattr(self, "selected_gimp_target", "pm" if distro else "flatpak" if fltpk else None)
+        pm_selected = self.plan.has("gimp_install_pm") or selected_target == "pm"
+        fp_selected = self.plan.has("gimp_install_flatpak") or selected_target == "flatpak"
 
         # Tk centered the two cards at relx=0.5, rely=0.45 inside a frame
         # that filled the whole page. Qt has no direct equivalent inside a
@@ -804,19 +811,19 @@ class WizardPages:
         layout.addStretch(2)
 
     def _wizard_pick_gimp_method(self, method: str):
-        if find_gimp_binary():
-            show_snackbar(self, "GIMP is already installed on your system", "info")
-            self._wizard_advance()
-            return
+        self.selected_gimp_target = method
         self.plan.discard("gimp_install_pm")
         self.plan.discard("gimp_install_flatpak")
         if method == "pm":
-            action = PlannedAction("gimp_install_pm", "Install GIMP (package manager)", "install",
-                                    lambda job: install_gimp_package_manager(job, include_gmic=False))
+            if not gimp_native_installed():
+                action = PlannedAction("gimp_install_pm", "Install GIMP (package manager)", "install",
+                                        lambda job: install_gimp_package_manager(job, include_gmic=False))
+                self.plan.add(action)
         else:
-            action = PlannedAction("gimp_install_appimage", "Install GIMP (AppImage)", "install",
-                                    lambda job: install_gimp_appimage(job))
-        self.plan.add(action)
+            if not flatpak_gimp_installed():
+                action = PlannedAction("gimp_install_flatpak", "Install GIMP (Flatpak)", "install",
+                                        lambda job: install_gimp_flatpak(job))
+                self.plan.add(action)
         self._wizard_advance()
 
     # ------------------------------------------------------------------
@@ -830,7 +837,8 @@ class WizardPages:
         parent.layout().addStretch(1)
 
     def _wizard_render_photogimp(self, parent):
-        installed = photogimp_installed()
+        target = getattr(self, "selected_gimp_target", "pm")
+        installed = photogimp_installed(target=target)
 
         def extra(frame):
             if installed:
@@ -838,12 +846,15 @@ class WizardPages:
                                      width=200, command=self._repair_photogimp_desktop)
                 frame.layout().addWidget(btn)
 
+        target_str = "Flatpak GIMP" if target == "flatpak" else "System GIMP"
+        install_label = f"Install PhotoGIMP ({target_str})"
+
         self._wizard_toggle_card(
             parent, key="photogimp", title="PhotoGIMP", icon_kind="photogimp",
             installed=installed, description="Icons, shortcuts, splash screen, UI layout",
-            install_label="Install PhotoGIMP",
-            install_run=lambda job: install_photogimp(job, gimp_command=(find_gimp_command() or [None])[0]),
-            uninstall_run=lambda job: remove_photogimp(job),
+            install_label=install_label,
+            install_run=lambda job, t=target: install_photogimp(job, gimp_command=find_gimp_command(), target=t),
+            uninstall_run=lambda job, t=target: remove_photogimp(job, target=t),
             extra=extra, advance=False, shortcut_num="1")
 
     def _repair_photogimp_desktop(self):
@@ -858,14 +869,15 @@ class WizardPages:
         self.run_in_background(task, on_done=done)
 
     def _wizard_render_gmic(self, parent):
-        installed = gmic_installed()
-        available = gmic_available_on_this_release()
+        target = getattr(self, "selected_gimp_target", "pm")
+        installed = gmic_installed(target=target)
+        available = gmic_available_on_this_release(target=target)
         self._wizard_toggle_card(
             parent, key="gmic", title="G'MIC", icon_kind="gmic",
             installed=installed, description="Extra filter collection for GIMP",
             install_label="Install G'MIC",
-            install_run=lambda job: install_gmic_only(job),
-            uninstall_run=lambda job: remove_gmic_only(job),
+            install_run=lambda job, t=target: install_gmic_only(job, target=t),
+            uninstall_run=lambda job, t=target: remove_gmic_only(job, target=t),
             install_enabled=available,
             disabled_reason=(None if available else
                               f"No G'MIC package on this distribution release — see {GMIC_DOWNLOAD_PAGE} "
@@ -873,13 +885,14 @@ class WizardPages:
             advance=False, shortcut_num="2")
 
     def _wizard_render_batcher(self, parent):
-        installed = batcher_installed()
+        target = getattr(self, "selected_gimp_target", "pm")
+        installed = batcher_installed(target=target)
         self._wizard_toggle_card(
             parent, key="batcher", title="Batcher (Optional)", icon_kind="batcher",
             installed=installed, description="Batch image processing / export layers",
             install_label="Install Batcher",
-            install_run=lambda job: install_batcher(job),
-            uninstall_run=lambda job: remove_batcher(job),
+            install_run=lambda job, t=target: install_batcher(job, target=t),
+            uninstall_run=lambda job, t=target: remove_batcher(job, target=t),
             advance=False, shortcut_num="3")
 
     # ------------------------------------------------------------------
@@ -1405,7 +1418,7 @@ class WizardPages:
         sam_installs = [a for a in self.plan if a.key.startswith("sam_model:") and a.kind == "install"]
         sam_removes = [a for a in self.plan if a.key.startswith("sam_model:") and a.kind == "remove"]
         grouped_keys = {a.key for a in sam_installs + sam_removes}
-        other_actions = [a for a in self.plan if a.key not in grouped_keys]
+        other_actions = sorted([a for a in self.plan if a.key not in grouped_keys], key=_action_sort_index)
 
         def add_row(label: str, kind: str, step_key: str, keys: list[str]):
             row = RoundedCard(parent, pad=10, radius=12)

@@ -126,20 +126,6 @@ jobs:
         with:
           args: -color
 
-  powershell:
-    name: Lint Windows installer
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: PSScriptAnalyzer
-        shell: pwsh
-        run: |
-          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
-          $results = Invoke-ScriptAnalyzer -Path windows -Recurse -Severity Warning
-          $results | Format-Table -AutoSize
-          if ($results | Where-Object Severity -eq 'Error') { exit 1 }
-
   build-windows:
     name: Build Windows executable (LazyGimp-Installer-Windows.exe)
     runs-on: windows-latest

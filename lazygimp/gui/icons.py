@@ -117,6 +117,19 @@ def _paint_icon(p: _Painter, cx, cy, kind, color, s, frame=0):
             cx, cy - s * 0.3,
             cx + s * 0.2, cy + s * 0.3
         ], outline=color, width=w)
+    elif kind == "flatpak":
+        # Isometric Flatpak container cube glyph
+        p.polygon([
+            cx, cy - s * 0.7,
+            cx + s * 0.65, cy - s * 0.35,
+            cx + s * 0.65, cy + s * 0.35,
+            cx, cy + s * 0.7,
+            cx - s * 0.65, cy + s * 0.35,
+            cx - s * 0.65, cy - s * 0.35
+        ], outline=color, width=w)
+        p.line([cx, cy, cx, cy + s * 0.7], color, width=w)
+        p.line([cx, cy, cx - s * 0.65, cy - s * 0.35], color, width=w)
+        p.line([cx, cy, cx + s * 0.65, cy - s * 0.35], color, width=w)
     elif kind in ("gimp", "photogimp"):
         p.polygon([cx - s * 0.5, cy - s * 0.3, cx - s * 0.7, cy - s * 0.7, cx - s * 0.2, cy - s * 0.4], outline=color, width=w)
         p.polygon([cx + s * 0.2, cy - s * 0.4, cx + s * 0.7, cy - s * 0.7, cx + s * 0.5, cy - s * 0.3], outline=color, width=w)

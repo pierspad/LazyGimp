@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .constants import DESKTOP_FILES_MANIFEST, PHOTOGIMP_BRANCH, PHOTOGIMP_EXCLUDE, PHOTOGIMP_MANIFEST, PHOTOGIMP_RELEASE_TAG, PHOTOGIMP_REPO, STATE_DIR, XDG_DATA_HOME, ensure_state_dir
-from .gimp_detect import _version_key, find_gimp_binary, gimp_config_dir, gimp_live_config_dir, gimp_version_dirs
+from .gimp_detect import _version_key, find_gimp_command, gimp_config_dir, gimp_live_config_dir, gimp_version_dirs
 from .job import Job
 from .util import fetch_github_repo_info, fetch_latest_github_release_assets, github_branch_archive_url
 from typing import Optional
@@ -22,12 +22,12 @@ import zipfile
 # upgraded/removed cleanly without ever touching the user's own files).
 # ---------------------------------------------------------------------------
 
-def photogimp_target_dir() -> Optional[str]:
-    return gimp_live_config_dir()  # only "installed" if GIMP has actually adopted a profile
+def photogimp_target_dir(target: Optional[str] = None) -> Optional[str]:
+    return gimp_live_config_dir(target)
 
 
-def photogimp_installed() -> bool:
-    for d in gimp_version_dirs():
+def photogimp_installed(target: Optional[str] = None) -> bool:
+    for d in gimp_version_dirs(target):
         if os.path.isfile(os.path.join(d, PHOTOGIMP_MANIFEST)):
             return True
     return False
@@ -162,6 +162,21 @@ def _photogimp_apply(payload: str, target: str, job: Job) -> int:
                     continue
                 dst = os.path.join(target, rel)
                 os.makedirs(os.path.dirname(dst), exist_ok=True)
+
+                if name == "sessionrc":
+                    try:
+                        with open(src, "r", encoding="utf-8", errors="ignore") as sf:
+                            lines = sf.readlines()
+                        cleaned = [line_str for line_str in lines if not re.match(r"^\s*\(\s*(monitor\s+\d+|hide-docks)\b", line_str)]
+                        with open(dst, "w", encoding="utf-8") as df:
+                            df.writelines(cleaned)
+                        os.chmod(dst, 0o644)
+                        manifest.write(rel + "\n")
+                        count += 1
+                        continue
+                    except Exception as e:
+                        job.log(f"Warning: could not sanitize sessionrc: {e}")
+
                 shutil.copy2(src, dst)
                 os.chmod(dst, 0o644)
                 manifest.write(rel + "\n")
@@ -193,7 +208,15 @@ def _photogimp_install_desktop_files(extracted: str, gimp_command: Optional[str]
     # Icon=/StartupWMClass= from the real entry along the way — both are
     # needed below to make the *hidden* shadow entry a fully working
     # launcher too, not just Exec-less bait.
-    exec_line = f"{gimp_command or 'gimp'} %U"
+    if isinstance(gimp_command, (list, tuple)):
+        cmd_str = " ".join([str(c) for c in gimp_command if c])
+    elif isinstance(gimp_command, str) and gimp_command.strip() and gimp_command.strip() not in ("flatpak", "gimp"):
+        cmd_str = gimp_command.strip()
+    else:
+        cmd = find_gimp_command()
+        cmd_str = " ".join(cmd) if cmd else "gimp"
+
+    exec_line = f"{cmd_str} %U"
     icon_name = "photogimp"
     wm_class = None
     for f in manifest_lines:
@@ -299,7 +322,24 @@ def repair_desktop_integration(job: Job) -> bool:
             wm_class = line.split("=", 1)[1] or wm_class
         elif line.startswith("Exec="):
             exec_line = line.split("=", 1)[1] or exec_line
-    exec_line = exec_line or f"{find_gimp_binary() or 'gimp'} %U"
+
+    if not exec_line or exec_line in ("gimp %U", "flatpak %U", "flatpak"):
+        cmd = find_gimp_command()
+        cmd_str = " ".join(cmd) if cmd else "gimp"
+        exec_line = f"{cmd_str} %U"
+
+    if real_file and exec_line:
+        try:
+            with open(real_file, encoding="utf-8") as fh:
+                r_lines = fh.readlines()
+            with open(real_file, "w", encoding="utf-8") as fh:
+                for line in r_lines:
+                    if line.startswith("Exec="):
+                        fh.write(f"Exec={exec_line}\n")
+                    else:
+                        fh.write(line)
+        except OSError as e:
+            job.log(f"Could not update {real_file}: {e}")
 
     hidden = os.path.join(apps_dir, "gimp.desktop")
     entry = ["[Desktop Entry]", "Version=1.0", "Type=Application", "Name=GIMP",
@@ -335,23 +375,25 @@ def _photogimp_remove_desktop_files(job: Job) -> None:
                         capture_output=True)
 
 
-def install_photogimp(job: Job, version_hint: Optional[str] = None, gimp_command: Optional[str] = None) -> bool:
+def install_photogimp(job: Job, version_hint: Optional[str] = None, gimp_command: Optional[str | list[str]] = None, target: Optional[str] = None) -> bool:
     if _gimp_is_running():
         job.log("ERROR: GIMP is currently running — close it first. GIMP saves its own "
                  "toolrc/sessionrc/gimprc to disk when it exits, which would silently "
                  "undo PhotoGIMP's layout right after this step finishes.")
         return False
-    primary_target = gimp_config_dir(version_hint)
+    primary_target = gimp_config_dir(version_hint, target)
     if not primary_target:
         job.log("ERROR: cannot locate a GIMP config directory — launch GIMP once, then retry.")
         return False
 
-    targets = [primary_target]
-    for d in gimp_version_dirs():
-        if d not in targets:
-            targets.append(d)
+    norm_primary = os.path.normpath(primary_target)
+    targets = [norm_primary]
+    for d in gimp_version_dirs(target):
+        nd = os.path.normpath(d)
+        if nd not in targets:
+            targets.append(nd)
 
-    job.log(f"GIMP config directory: {primary_target} (applying across profiles: {', '.join([os.path.basename(t) for t in targets])})")
+    job.log(f"GIMP config directory: {norm_primary} (applying across profiles: {', '.join([os.path.basename(t) for t in targets])})")
     extracted = _photogimp_download_and_extract(job)
     if not extracted:
         return False
@@ -361,13 +403,13 @@ def install_photogimp(job: Job, version_hint: Optional[str] = None, gimp_command
         return False
 
     total_files = 0
-    for target in targets:
-        profile_name = os.path.basename(target)
-        backup = _photogimp_backup(target)
+    for t in targets:
+        profile_name = os.path.basename(t)
+        backup = _photogimp_backup(t)
         if backup:
             job.log(f"Existing configuration backed up to {backup}")
 
-        count = _photogimp_apply(payload, target, job)
+        count = _photogimp_apply(payload, t, job)
         total_files += count
         job.log(f"PhotoGIMP layer installed ({count} files) into profile '{profile_name}'")
 
@@ -377,22 +419,22 @@ def install_photogimp(job: Job, version_hint: Optional[str] = None, gimp_command
     return True
 
 
-def remove_photogimp(job: Job) -> bool:
+def remove_photogimp(job: Job, target: Optional[str] = None) -> bool:
     if _gimp_is_running():
         job.log("ERROR: GIMP is currently running — close it first, otherwise its exit "
                  "will rewrite toolrc/sessionrc/gimprc and interfere with the removal.")
         return False
     found = False
-    for target in gimp_version_dirs():
-        manifest_path = os.path.join(target, PHOTOGIMP_MANIFEST)
+    for target_dir in gimp_version_dirs(target):
+        manifest_path = os.path.join(target_dir, PHOTOGIMP_MANIFEST)
         if not os.path.isfile(manifest_path):
             continue
         found = True
-        job.log(f"Removing PhotoGIMP layer from {target}")
+        job.log(f"Removing PhotoGIMP layer from {target_dir}")
         with open(manifest_path, encoding="utf-8") as fh:
             rels = [ln.strip() for ln in fh if ln.strip()]
         for rel in rels:
-            p = os.path.join(target, rel)
+            p = os.path.join(target_dir, rel)
             if os.path.isfile(p) or os.path.islink(p):
                 try:
                     os.remove(p)
@@ -400,7 +442,7 @@ def remove_photogimp(job: Job) -> bool:
                     pass
         os.remove(manifest_path)
         # prune now-empty directories
-        for root, dirs, files in os.walk(target, topdown=False):
+        for root, dirs, files in os.walk(target_dir, topdown=False):
             if not dirs and not files:
                 try:
                     os.rmdir(root)

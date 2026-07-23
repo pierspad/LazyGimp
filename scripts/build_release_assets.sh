@@ -167,7 +167,6 @@ python3 -m zipapp "$PYZ_STAGE" \
   --output "${DIST}/LazyGimp-Python.pyz" \
   --compress
 chmod +x "${DIST}/LazyGimp-Python.pyz"
-ln -sf "LazyGimp-Python.pyz" "${DIST}/lazygimp.pyz"
 
 # --- 2. PyInstaller: self-contained Linux binary ---------------------------
 [[ "$STAGE_ONLY" == "1" ]] || pyinstaller --onefile --clean --noconfirm \
@@ -198,18 +197,9 @@ ln -sf "LazyGimp-Python.pyz" "${DIST}/lazygimp.pyz"
   --collect-all PySide6.QtWidgets \
   "${BUNDLE}/installer.py"
 
-if [[ -f "${DIST}/LazyGimp-Installer-Linux-x86_64" ]]; then
-  ln -sf "LazyGimp-Installer-Linux-x86_64" "${DIST}/lazygimp-linux-x86_64"
-fi
-
 # --- 3. source zip: the folder with everything needed to run ---------------
 (cd "$STAGE" && zip -qr "${DIST}/LazyGimp-Source.zip" lazygimp \
   -x 'lazygimp/lazygimp/__pycache__/*')
-cp "${DIST}/LazyGimp-Source.zip" "${DIST}/LazyGimp-${VERSION}-Source.zip"
-ln -sf "LazyGimp-Source.zip" "${DIST}/lazygimp-src.zip"
-
-# --- 4. Windows installer script -------------------------------------------
-cp "${ROOT}/windows/windows-install.ps1" "${DIST}/"
 
 (cd "$DIST" && sha256sum -- * >checksums.txt)
 

@@ -63,7 +63,8 @@ class QtAppIntegrationTests(unittest.TestCase):
         
         # Check plan membership flips when card clicked (install or remove depending on current status)
         from lazygimp.photogimp import photogimp_installed
-        action_key = "photogimp:remove" if photogimp_installed() else "photogimp:install"
+        target = getattr(app, "selected_gimp_target", None)
+        action_key = "photogimp:remove" if photogimp_installed(target=target) else "photogimp:install"
         was_queued = app.plan.has(action_key)
         app._wizard_cards["photogimp"]()
         self.assertNotEqual(app.plan.has(action_key), was_queued)

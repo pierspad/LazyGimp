@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .constants import BATCHER_RELEASE_TAG, BATCHER_REPO
-from .gimp_detect import gimp_plugins_dir, invalidate_gimp_plugin_cache
+from .gimp_detect import gimp_plugins_dir, gimp_version_dirs, invalidate_gimp_plugin_cache
 from .job import Job
 from .util import fetch_latest_github_release_assets
 from typing import TYPE_CHECKING, Optional
@@ -29,14 +29,24 @@ import zipfile
 # force the dependency).
 # ---------------------------------------------------------------------------
 
-def batcher_installed() -> bool:
-    d = gimp_plugins_dir()
-    return bool(d) and os.path.isdir(os.path.join(d, "batcher"))
+def batcher_installed(target: Optional[str] = None) -> bool:
+    if target is not None:
+        d = gimp_plugins_dir(target=target)
+        return bool(d) and os.path.isdir(os.path.join(d, "batcher"))
+    for d in gimp_version_dirs(None):
+        if os.path.isdir(os.path.join(d, "plug-ins", "batcher")):
+            return True
+    return False
 
 
-def segany_plugin_installed() -> bool:
-    d = gimp_plugins_dir()
-    return bool(d) and os.path.isfile(os.path.join(d, "seganyplugin", "seganyplugin.py"))
+def segany_plugin_installed(target: Optional[str] = None) -> bool:
+    if target is not None:
+        d = gimp_plugins_dir(target=target)
+        return bool(d) and os.path.isfile(os.path.join(d, "seganyplugin", "seganyplugin.py"))
+    for d in gimp_version_dirs(None):
+        if os.path.isfile(os.path.join(d, "plug-ins", "seganyplugin", "seganyplugin.py")):
+            return True
+    return False
 
 
 def _download_zip_and_find(job: Job, url: str, folder_name: str) -> Optional[str]:
@@ -53,8 +63,8 @@ def _download_zip_and_find(job: Job, url: str, folder_name: str) -> Optional[str
     return None
 
 
-def install_batcher(job: Job) -> bool:
-    dest_dir = gimp_plugins_dir()
+def install_batcher(job: Job, target: Optional[str] = None) -> bool:
+    dest_dir = gimp_plugins_dir(target=target)
     if not dest_dir:
         job.log("ERROR: no GIMP plug-ins directory found — install GIMP first.")
         return False
@@ -92,14 +102,21 @@ def install_batcher(job: Job) -> bool:
     return True
 
 
-def remove_batcher(job: Job) -> bool:
-    d = gimp_plugins_dir()
-    dest = os.path.join(d, "batcher") if d else None
-    if dest and os.path.isdir(dest):
-        shutil.rmtree(dest)
-        invalidate_gimp_plugin_cache(job)
-        job.log(f"Removed {dest}")
-    else:
+def remove_batcher(job: Job, target: Optional[str] = None) -> bool:
+    found = False
+    targets = [gimp_plugins_dir(target=target)] if target else [
+        os.path.join(d, "plug-ins") for d in gimp_version_dirs(None)
+    ]
+    for d in targets:
+        if not d:
+            continue
+        dest = os.path.join(d, "batcher")
+        if os.path.isdir(dest):
+            shutil.rmtree(dest)
+            invalidate_gimp_plugin_cache(job)
+            job.log(f"Removed {dest}")
+            found = True
+    if not found:
         job.log("Batcher was not installed.")
     return True
 
@@ -114,9 +131,28 @@ def install_segany_plugin(job: Job) -> bool:
     return load().plugin.install_plugin(job)
 
 
-def remove_segany_plugin(job: Job) -> bool:
-    from .gimpsam_dep import load
-    return load().plugin.remove_plugin(job)
+def remove_segany_plugin(job: Job, target: Optional[str] = None) -> bool:
+    found = False
+    targets = [gimp_plugins_dir(target=target)] if target else [
+        os.path.join(d, "plug-ins") for d in gimp_version_dirs(None)
+    ]
+    for d in targets:
+        if not d:
+            continue
+        dest = os.path.join(d, "seganyplugin")
+        if os.path.isdir(dest):
+            shutil.rmtree(dest)
+            invalidate_gimp_plugin_cache(job)
+            job.log(f"Removed {dest}")
+            found = True
+    try:
+        from .gimpsam_dep import load
+        load().plugin.remove_plugin(job)
+    except Exception:
+        pass
+    if not found and not targets:
+        job.log("SAM GIMP plug-in was not installed.")
+    return True
 
 
 def write_segany_plugin_settings(primary: ModelSpec) -> None:

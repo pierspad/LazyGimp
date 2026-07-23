@@ -17,7 +17,13 @@ def gimp_native_installed() -> bool:
     return DISTROS[distro].is_pkg_installed(DISTROS[distro].gimp_pkgs[0])
 
 
-def gmic_installed() -> bool:
+def gmic_installed(target: str = "pm") -> bool:
+    if target == "flatpak":
+        if not shutil.which("flatpak"):
+            return False
+        import subprocess
+        res = subprocess.run(["flatpak", "info", FLATPAK_GMIC_ID], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return res.returncode == 0
     distro = detect_distro()
     if not distro:
         return False
@@ -26,7 +32,9 @@ def gmic_installed() -> bool:
     return bool(pkgs) and all(fam.is_pkg_installed(p) for p in pkgs)
 
 
-def gmic_available_on_this_release() -> bool:
+def gmic_available_on_this_release(target: str = "pm") -> bool:
+    if target == "flatpak":
+        return True
     distro = detect_distro()
     if not distro:
         return False
@@ -72,7 +80,20 @@ def install_gimp_package_manager(job: Job, include_gmic: bool = True) -> bool:
     return True
 
 
-def install_gmic_only(job: Job) -> bool:
+def install_gmic_only(job: Job, target: str = "pm") -> bool:
+    if target == "flatpak":
+        if not shutil.which("flatpak"):
+            job.log("ERROR: Flatpak is not installed on this system.")
+            return False
+        job.log(f"Installing G'MIC Flatpak extension ({FLATPAK_GMIC_ID})...")
+        rc = job.run_cmd(["flatpak", "install", "-y", "flathub", f"{FLATPAK_GMIC_ID}//3"])
+        if rc != 0:
+            rc = job.run_cmd(["flatpak", "install", "-y", "flathub", FLATPAK_GMIC_ID])
+        if rc != 0:
+            job.log(f"Flatpak install failed for {FLATPAK_GMIC_ID} (exit {rc}).")
+            return False
+        job.log("G'MIC Flatpak extension installed.")
+        return True
     distro = detect_distro()
     if not distro:
         job.log("ERROR: G'MIC is installed through the system package manager — no supported distribution detected.")
@@ -95,7 +116,13 @@ def install_gmic_only(job: Job) -> bool:
     return True
 
 
-def remove_gmic_only(job: Job) -> bool:
+def remove_gmic_only(job: Job, target: str = "pm") -> bool:
+    if target == "flatpak":
+        if not shutil.which("flatpak"):
+            return True
+        job.log(f"Removing G'MIC Flatpak extension ({FLATPAK_GMIC_ID})...")
+        rc = job.run_cmd(["flatpak", "uninstall", "-y", FLATPAK_GMIC_ID])
+        return rc == 0
     distro = detect_distro()
     if not distro:
         job.log("Cannot remove G'MIC automatically — no supported distribution detected.")
@@ -135,17 +162,19 @@ def install_gimp_flatpak(job: Job, include_gmic: bool = True) -> bool:
             return False
 
     job.log("Adding Flathub repository (if not already present)...")
-    job.run(["flatpak", "remote-add", "--if-not-exists", "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo"])
+    job.run_cmd(["flatpak", "remote-add", "--if-not-exists", "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo"])
 
     job.log(f"Installing GIMP Flatpak ({FLATPAK_GIMP_ID})...")
-    rc = job.run(["flatpak", "install", "-y", "flathub", FLATPAK_GIMP_ID])
+    rc = job.run_cmd(["flatpak", "install", "-y", "flathub", FLATPAK_GIMP_ID])
     if rc != 0:
         job.log(f"Flatpak install failed for {FLATPAK_GIMP_ID} (exit {rc}).")
         return False
 
     if include_gmic:
         job.log(f"Installing G'MIC Flatpak extension ({FLATPAK_GMIC_ID})...")
-        job.run(["flatpak", "install", "-y", "flathub", FLATPAK_GMIC_ID])
+        rc_gmic = job.run_cmd(["flatpak", "install", "-y", "flathub", f"{FLATPAK_GMIC_ID}//3"])
+        if rc_gmic != 0:
+            job.run_cmd(["flatpak", "install", "-y", "flathub", FLATPAK_GMIC_ID])
 
     job.log("GIMP Flatpak installed successfully.")
     gimp_warm_up(job)
@@ -157,7 +186,7 @@ def remove_gimp_flatpak(job: Job) -> bool:
         job.log("Flatpak is not installed on this system.")
         return True
     job.log(f"Removing GIMP Flatpak ({FLATPAK_GIMP_ID}) and G'MIC extension...")
-    rc = job.run(["flatpak", "uninstall", "-y", FLATPAK_GIMP_ID, FLATPAK_GMIC_ID])
+    rc = job.run_cmd(["flatpak", "uninstall", "-y", FLATPAK_GIMP_ID, FLATPAK_GMIC_ID])
     return rc == 0
 
 

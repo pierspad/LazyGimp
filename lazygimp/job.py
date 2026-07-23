@@ -12,6 +12,9 @@ import subprocess
 import threading
 import urllib.request
 
+import sys
+import re
+
 # ---------------------------------------------------------------------------
 # Job — background work + logging, shared by every long-running action
 # (installs, downloads, removals) whether driven by the GUI or the CLI.
@@ -23,6 +26,7 @@ class Job:
         self.password_prompt = password_prompt  # callable(str) -> str, GUI-only
         self.cancel_event = threading.Event()
         self.proc: Optional[subprocess.Popen] = None
+        self._last_was_progress = False
 
     def cancel(self):
         self.cancel_event.set()
@@ -32,28 +36,49 @@ class Job:
             except Exception:
                 pass
 
-    def log(self, msg: str):
-        print(msg, flush=True)
+    def log(self, msg: str, is_progress: bool = False):
+        if is_progress and sys.stdout.isatty():
+            sys.stdout.write(f"\r\033[K{msg}")
+            sys.stdout.flush()
+            self._last_was_progress = True
+        else:
+            if self._last_was_progress and sys.stdout.isatty():
+                sys.stdout.write("\n")
+                self._last_was_progress = False
+            print(msg, flush=True)
+
         if self.log_queue is not None:
             self.log_queue.put(msg)
 
     def run_cmd(self, cmd: list[str], *, log_as: Optional[list[str]] = None, **kw) -> int:
-        # log_as lets a call site substitute a short, redacted description
-        # for the echoed command line — needed for anything built with
-        # `-c <inline script>`, where the real argv can run to several KB
-        # and, worse, may contain secrets (e.g. an HF token interpolated
-        # into the script text) that must never hit stdout/the GUI log.
         display = log_as if log_as is not None else cmd
         if self.cancel_event.is_set():
             self.log("Cancelled — skipping: " + " ".join(display))
             return -1
         self.log("$ " + " ".join(display))
         self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, **kw)
-        for line in iter(self.proc.stdout.readline, ""):
-            if line:
-                clean = clean_output_line(line.rstrip("\n"))
-                if clean:
-                    self.log(clean)
+        buf = []
+        while True:
+            char = self.proc.stdout.read(1)
+            if not char:
+                if buf:
+                    clean = clean_output_line("".join(buf))
+                    if clean:
+                        self.log(clean)
+                break
+            if char in ("\r", "\n"):
+                if buf:
+                    raw_str = "".join(buf)
+                    clean = clean_output_line(raw_str)
+                    if clean:
+                        is_prog = (char == "\r") or bool(re.search(r"\b\d+%\b", clean)) or ("Installing" in clean and "%" in clean) or ("Downloading" in clean and "%" in clean)
+                        self.log(clean, is_progress=is_prog)
+                    buf = []
+            else:
+                buf.append(char)
+        if self._last_was_progress and sys.stdout.isatty():
+            sys.stdout.write("\n")
+            self._last_was_progress = False
         self.proc.wait()
         rc = self.proc.returncode
         self.proc = None
@@ -67,12 +92,30 @@ class Job:
         self.log("$ " + " ".join(display))
         self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, **kw)
         lines: list[str] = []
-        for line in iter(self.proc.stdout.readline, ""):
-            if line:
-                clean = clean_output_line(line.rstrip("\n"))
-                if clean:
-                    self.log(clean)
-                    lines.append(clean)
+        buf = []
+        while True:
+            char = self.proc.stdout.read(1)
+            if not char:
+                if buf:
+                    clean = clean_output_line("".join(buf))
+                    if clean:
+                        self.log(clean)
+                        lines.append(clean)
+                break
+            if char in ("\r", "\n"):
+                if buf:
+                    raw_str = "".join(buf)
+                    clean = clean_output_line(raw_str)
+                    if clean:
+                        is_prog = (char == "\r") or bool(re.search(r"\b\d+%\b", clean)) or ("Installing" in clean and "%" in clean) or ("Downloading" in clean and "%" in clean)
+                        self.log(clean, is_progress=is_prog)
+                        lines.append(clean)
+                    buf = []
+            else:
+                buf.append(char)
+        if self._last_was_progress and sys.stdout.isatty():
+            sys.stdout.write("\n")
+            self._last_was_progress = False
         self.proc.wait()
         rc = self.proc.returncode
         self.proc = None

@@ -270,7 +270,7 @@ class LandingPage:
         if not photogimp_installed():
             actions.append(PlannedAction(
                 "photogimp:install", "Install PhotoGIMP", "install",
-                lambda job: install_photogimp(job, gimp_command=(find_gimp_command() or [None])[0])))
+                lambda job: install_photogimp(job, gimp_command=find_gimp_command())))
 
         if gmic_available_on_this_release() and not gmic_installed():
             actions.append(PlannedAction("gmic:install", "Install G'MIC", "install",

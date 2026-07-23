@@ -47,8 +47,12 @@ def gimp_version_string() -> Optional[str]:
     return f"{m.group(1)}.{m.group(2)}" if m else None
 
 
-def gimp_config_base() -> str:
+def gimp_config_base(target: Optional[str] = None) -> str:
     native_base = os.path.join(XDG_CONFIG_HOME, "GIMP")
+    if target == "flatpak":
+        return FLATPAK_CONFIG_DIR
+    if target == "pm":
+        return native_base
     if os.path.isdir(FLATPAK_CONFIG_DIR) and not os.path.isdir(native_base):
         return FLATPAK_CONFIG_DIR
     if flatpak_gimp_installed() and not find_gimp_binary():
@@ -63,9 +67,10 @@ def _version_key(name: str):
         return (0,)
 
 
-def gimp_version_dirs() -> list[str]:
+def gimp_version_dirs(target: Optional[str] = None) -> list[str]:
     dirs = []
-    for base in [gimp_config_base(), FLATPAK_CONFIG_DIR, os.path.join(XDG_CONFIG_HOME, "GIMP")]:
+    bases = [gimp_config_base(target)] if target else [gimp_config_base(), FLATPAK_CONFIG_DIR, os.path.join(XDG_CONFIG_HOME, "GIMP")]
+    for base in bases:
         if os.path.isdir(base):
             names = [n for n in os.listdir(base) if re.fullmatch(r"\d+\.\d+", n) and os.path.isdir(os.path.join(base, n))]
             names.sort(key=_version_key)
@@ -76,19 +81,19 @@ def gimp_version_dirs() -> list[str]:
     return dirs
 
 
-def gimp_live_config_dir() -> Optional[str]:
+def gimp_live_config_dir(target: Optional[str] = None) -> Optional[str]:
     """The config dir GIMP actually reads, proven by a live `pluginrc` —
     more reliable than trusting `gimp --version`, whose reported MAJOR.MINOR
     is not guaranteed to equal the profile directory name GIMP actually
     uses."""
-    for d in reversed(gimp_version_dirs()):
+    for d in reversed(gimp_version_dirs(target)):
         if os.path.isfile(os.path.join(d, "pluginrc")):
             return d
     return None
 
 
-def gimp_config_dir(version_hint: Optional[str] = None) -> Optional[str]:
-    base = gimp_config_base()
+def gimp_config_dir(version_hint: Optional[str] = None, target: Optional[str] = None) -> Optional[str]:
+    base = gimp_config_base(target)
     if version_hint:
         m = re.search(r"(\d+)\.(\d+)", version_hint)
         if m:
@@ -96,17 +101,17 @@ def gimp_config_dir(version_hint: Optional[str] = None) -> Optional[str]:
     ver = gimp_version_string()
     if ver:
         return os.path.join(base, ver)
-    dirs = gimp_version_dirs()
+    dirs = gimp_version_dirs(target)
     if dirs:
         return dirs[-1]
-    live = gimp_live_config_dir()
+    live = gimp_live_config_dir(target)
     if live:
         return live
     return os.path.join(base, "3.0")
 
 
-def gimp_plugins_dir(version_hint: Optional[str] = None) -> Optional[str]:
-    cfg = gimp_config_dir(version_hint)
+def gimp_plugins_dir(version_hint: Optional[str] = None, target: Optional[str] = None) -> Optional[str]:
+    cfg = gimp_config_dir(version_hint, target)
     return os.path.join(cfg, "plug-ins") if cfg else None
 
 
