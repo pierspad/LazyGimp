@@ -3,9 +3,7 @@ from __future__ import annotations
 from .util import clean_output_line
 from typing import Optional
 import os
-import pty
 import queue
-import select
 import signal
 import shutil
 import subprocess
@@ -187,9 +185,13 @@ class Job:
 def run_cmd_sudo_pty(job: Job, cmd: list[str], env: dict, password_prompt) -> int:
     """Run `cmd` with its controlling terminal attached to a fresh pty, so an
     internal `sudo` can prompt for a password even though this process (a Tk
-    GUI) has none of its own. `password_prompt(text) -> str` must block until
-    answered; it is responsible for hopping onto the GUI's own main thread
-    and back, if needed."""
+    GUI) has none of its own."""
+    import sys
+    if sys.platform == "win32":
+        return job.run_cmd(cmd, env=env)
+    import pty
+    import select
+
     job.log("$ " + " ".join(cmd))
     pid, master_fd = pty.fork()
     if pid == 0:  # child

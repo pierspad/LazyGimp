@@ -170,7 +170,7 @@ chmod +x "${DIST}/LazyGimp-Python.pyz"
 
 # --- 2. PyInstaller: self-contained Linux binary ---------------------------
 [[ "$STAGE_ONLY" == "1" ]] || pyinstaller --onefile --clean --noconfirm \
-  --name "LazyGimp-Installer-Linux-x86_64" \
+  --name "LazyGimp-Installer-Linux" \
   --distpath "$DIST" \
   --workpath "${STAGE}/pyi-build" \
   --specpath "${STAGE}/pyi-spec" \

@@ -112,8 +112,8 @@ jobs:
       - name: Assets must actually run
         run: |
           ./dist/LazyGimp-Python.pyz --help
-          ./dist/LazyGimp-Installer-Linux-x86_64 --help
-          ./dist/LazyGimp-Installer-Linux-x86_64 status
+          ./dist/LazyGimp-Installer-Linux --help
+          ./dist/LazyGimp-Installer-Linux status
 
   workflows:
     name: Lint workflows (actionlint)

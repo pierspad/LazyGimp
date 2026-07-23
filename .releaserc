@@ -54,7 +54,7 @@
       "@semantic-release/github",
       {
         "assets": [
-          { "path": "dist/LazyGimp-Installer-Linux-x86_64" },
+          { "path": "dist/LazyGimp-Installer-Linux" },
           { "path": "dist/LazyGimp-Installer-Windows.exe" },
           { "path": "dist/LazyGimp-Python.pyz" },
           { "path": "dist/LazyGimp-Source.zip" },
