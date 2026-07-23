@@ -1,3 +1,29 @@
+## [2.1.0](https://github.com/pierspad/LazyGimp/compare/v2.0.0...v2.1.0) (2026-07-23)
+
+### ✨ Features
+
+* **gui-qt:** port install-progress page to PySide6 ([bbfe364](https://github.com/pierspad/LazyGimp/commit/bbfe3643523a559f649996c59a36efd557fb02e0))
+* **gui-qt:** port landing and uninstall pages to PySide6 ([3ebec9f](https://github.com/pierspad/LazyGimp/commit/3ebec9f1e8fb80214e09a411a4f741bdfa7514a7))
+* **gui-qt:** port wizard flow to PySide6 ([8e57917](https://github.com/pierspad/LazyGimp/commit/8e579177cf07898135ab0c6e0627e9bb17bff116))
+* **gui-qt:** PySide6 theme + widget library foundation ([5110857](https://github.com/pierspad/LazyGimp/commit/51108575f327e386ac08051a47c5d1e0e01990df))
+* **gui-qt:** wire up LazyGimpApp and --qt entrypoint ([8d011db](https://github.com/pierspad/LazyGimp/commit/8d011db7c320ea621adb3e3ee45f10792aed5e93))
+* **gui:** allow toggling removal on already-installed components in wizard ([1f8f0ba](https://github.com/pierspad/LazyGimp/commit/1f8f0baee7603e8cd121ca03859fdc5398eefcdb))
+* **gui:** complete PySide6 migration, redesign installer UI and update PyTorch wheel indexes ([e767427](https://github.com/pierspad/LazyGimp/commit/e767427f30cd666979a6cc922a1f20f1342ef0ec))
+* **gui:** fix card clicks, filter PyTorch builds by GPU, sanitize step order and refine terminal log styling ([d960447](https://github.com/pierspad/LazyGimp/commit/d960447050bc31516cfc2043b9a604674d3d90de))
+* **gui:** interactive per-step cards on the install-progress screen ([15ff390](https://github.com/pierspad/LazyGimp/commit/15ff3901078cfed30cae8238bebd9b0ceffb6637))
+* **gui:** stack snackbar toasts vertically with countdown progress bar ([b03dd7b](https://github.com/pierspad/LazyGimp/commit/b03dd7b6f93ee8dad366c59edb0b5aba33b61288))
+
+### 🐛 Bug Fixes
+
+* **ci:** fix requirements file missing error and cancel concurrent obsolete builds ([6a69f6f](https://github.com/pierspad/LazyGimp/commit/6a69f6f29b994e23bc8093177a5748941ee74caa))
+* **gimp:** surface a diagnostic tip for a stale pacman db lock ([f7a6143](https://github.com/pierspad/LazyGimp/commit/f7a61435f7729c9152d29c65fbd2a30d7eb66f87))
+* **gimp:** warm up GIMP with a real GUI pass, not just console mode ([750cf06](https://github.com/pierspad/LazyGimp/commit/750cf06dcaf248a202055e18719bdadf7456ac76))
+* **gui:** fix mouse-wheel crash from a renamed CustomTkinter API ([eac3e79](https://github.com/pierspad/LazyGimp/commit/eac3e7910e9ca6be37af9c1c407300ede471d6dc))
+* **gui:** round scrollbars, remove log header border box, protect installed components, and widen buttons ([0aa62da](https://github.com/pierspad/LazyGimp/commit/0aa62daf1a32f3ff1a4bd610c3b3432bb99820a0))
+* PhotoGIMP now working and headless warm-up enabled ([5c8b9a0](https://github.com/pierspad/LazyGimp/commit/5c8b9a078420ba8bf4946cc1c09ead2ef294443a))
+* **photogimp:** apply PhotoGIMP across all GIMP profile dirs and enhance running process detection ([70dfbe6](https://github.com/pierspad/LazyGimp/commit/70dfbe63bd545522e61c7748c06c359d43ac0975))
+* **photogimp:** don't let GIMP clobber PhotoGIMP's config, fetch latest commit ([32917a5](https://github.com/pierspad/LazyGimp/commit/32917a557ab06f697c3285932344e7e294e7ca5b))
+
 ## [2.0.0](https://github.com/pierspad/LazyGimp/compare/v1.1.2...v2.0.0) (2026-07-20)
 
 ### ⚠ BREAKING CHANGES
