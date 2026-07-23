@@ -1,3 +1,9 @@
+## [2.1.1](https://github.com/pierspad/LazyGimp/compare/v2.1.0...v2.1.1) (2026-07-23)
+
+### 🐛 Bug Fixes
+
+* **desktop:** resolve desktop entry retargeting and sessionrc parsing ([4800490](https://github.com/pierspad/LazyGimp/commit/4800490245f8bc6726ed9c56bbe4d9bb1886d1e6))
+
 ## [2.1.0](https://github.com/pierspad/LazyGimp/compare/v2.0.0...v2.1.0) (2026-07-23)
 
 ### ✨ Features
