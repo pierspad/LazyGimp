@@ -24,7 +24,10 @@ VENV_PIP = os.path.join(VENV_DIR, "bin", "pip")
 PHOTOGIMP_MANIFEST = ".lazygimp-photogimp.manifest"
 PHOTOGIMP_EXCLUDE = {"pluginrc"}  # GIMP's own per-machine plug-in cache — never ship it
 DESKTOP_FILES_MANIFEST = os.path.join(STATE_DIR, "desktop-files.manifest")
-APPIMAGE_DIR = os.environ.get("LAZYGIMP_APPIMAGE_DIR") or os.path.join(HOME, "Applications")
+FLATPAK_GIMP_ID = "org.gimp.GIMP"
+FLATPAK_GMIC_ID = "org.gimp.GIMP.Plugin.GMic"
+FLATPAK_CONFIG_DIR = os.path.join(HOME, ".var", "app", FLATPAK_GIMP_ID, "config", "GIMP")
+APPIMAGE_DIR = os.path.join(XDG_DATA_HOME, "lazygimp", "appimages")
 
 try:
     HERE = os.path.dirname(os.path.abspath(__file__))

@@ -77,7 +77,7 @@ from ...constants import GMIC_DOWNLOAD_PAGE
 from ...distro import detect_distro
 from ...gimp_detect import find_gimp_binary, find_gimp_command
 from ...gimp_install import (
-    appimage_present, gimp_native_installed, gmic_available_on_this_release, gmic_installed,
+    appimage_present, flatpak_present, gimp_native_installed, gmic_available_on_this_release, gmic_installed,
     install_gimp_appimage, install_gimp_package_manager, install_gmic_only, remove_gmic_only,
 )
 from ...hardware import recommended_model_key, recommended_torch_index
@@ -704,11 +704,11 @@ class WizardPages:
     def _wizard_render_gimp(self, parent):
         layout = parent.layout()
         native = gimp_native_installed()
-        appimg = appimage_present()
+        fltpk = flatpak_present()
         distro = detect_distro()
 
         pm_selected = self.plan.has("gimp_install_pm")
-        ai_selected = self.plan.has("gimp_install_appimage")
+        fp_selected = self.plan.has("gimp_install_flatpak")
 
         # Tk centered the two cards at relx=0.5, rely=0.45 inside a frame
         # that filled the whole page. Qt has no direct equivalent inside a
@@ -764,36 +764,36 @@ class WizardPages:
         pm_card.finalize()
         row_layout.addWidget(pm_card)
 
-        # -- Card 2: AppImage --
-        ai_card_bg = "#152e20" if ai_selected else CARD_BG
-        ai_card_hover_bg = "#1e3d2c" if ai_selected else "#2f323a"
-        ai_card = RoundedCard(
-            row, bg=ai_card_bg, border=CARD_BORDER,
-            command=lambda: self._wizard_pick_gimp_method("appimage"),
-            hover_bg=ai_card_hover_bg, active_border=SUCCESS if ai_selected else None,
-            active_width=2 if ai_selected else 1, hover_border=ACCENT, width=360, height=280)
-        body2 = QVBoxLayout(ai_card.body)
+        # -- Card 2: Flatpak --
+        fp_card_bg = "#152e20" if fp_selected else CARD_BG
+        fp_card_hover_bg = "#1e3d2c" if fp_selected else "#2f323a"
+        fp_card = RoundedCard(
+            row, bg=fp_card_bg, border=CARD_BORDER,
+            command=lambda: self._wizard_pick_gimp_method("flatpak"),
+            hover_bg=fp_card_hover_bg, active_border=SUCCESS if fp_selected else None,
+            active_width=2 if fp_selected else 1, hover_border=ACCENT, width=360, height=280)
+        body2 = QVBoxLayout(fp_card.body)
         body2.setAlignment(Qt.AlignHCenter | Qt.AlignTop)
 
-        icon_color2 = SUCCESS if (appimg or ai_selected) else TEXT_MUTED
+        icon_color2 = SUCCESS if (fltpk or fp_selected) else TEXT_MUTED
         body2.addSpacing(20)
-        body2.addWidget(icon_label(ai_card.body, "box", color=icon_color2, size=64),
+        body2.addWidget(icon_label(fp_card.body, "flatpak", color=icon_color2, size=64),
                          alignment=Qt.AlignHCenter)
         body2.addSpacing(10)
-        body2.addWidget(_label(ai_card.body, "(2)", F_BODY_B, TEXT_MUTED), alignment=Qt.AlignHCenter)
-        body2.addWidget(_label(ai_card.body, "AppImage", F_CARD_TITLE, TEXT), alignment=Qt.AlignHCenter)
+        body2.addWidget(_label(fp_card.body, "(2)", F_BODY_B, TEXT_MUTED), alignment=Qt.AlignHCenter)
+        body2.addWidget(_label(fp_card.body, "Flatpak", F_CARD_TITLE, TEXT), alignment=Qt.AlignHCenter)
         body2.addWidget(
-            _label(ai_card.body, "Standalone AppImage in Applications folder", F_SMALL, TEXT_MUTED),
+            _label(fp_card.body, "Official GIMP Flatpak from Flathub (+ G'MIC)", F_SMALL, TEXT_MUTED),
             alignment=Qt.AlignHCenter)
         body2.addSpacing(15)
 
-        status_text2 = "Installed ✓" if appimg else "Not installed"
-        status_color2 = SUCCESS if appimg else TEXT_MUTED
-        body2.addWidget(_label(ai_card.body, status_text2, F_BODY_B, status_color2),
+        status_text2 = "Installed ✓" if fltpk else "Not installed"
+        status_color2 = SUCCESS if fltpk else TEXT_MUTED
+        body2.addWidget(_label(fp_card.body, status_text2, F_BODY_B, status_color2),
                          alignment=Qt.AlignHCenter)
 
-        ai_card.finalize()
-        row_layout.addWidget(ai_card)
+        fp_card.finalize()
+        row_layout.addWidget(fp_card)
 
         row_layout.addStretch(1)
         layout.addWidget(row)
@@ -805,7 +805,7 @@ class WizardPages:
             self._wizard_advance()
             return
         self.plan.discard("gimp_install_pm")
-        self.plan.discard("gimp_install_appimage")
+        self.plan.discard("gimp_install_flatpak")
         if method == "pm":
             action = PlannedAction("gimp_install_pm", "Install GIMP (package manager)", "install",
                                     lambda job: install_gimp_package_manager(job, include_gmic=False))

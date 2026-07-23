@@ -54,7 +54,7 @@ class QtAppIntegrationTests(unittest.TestCase):
         first_key = app.wizard_steps[0].key
 
         if first_key == "gimp":
-            app._wizard_pick_gimp_method("appimage")
+            app._wizard_pick_gimp_method("flatpak")
             self.qapp.processEvents()
             self.assertEqual(app.wizard_index, 1, "picking a GIMP method should auto-advance")
 

@@ -158,51 +158,20 @@ sed -i "s/^__version__ = .*/__version__ = \"${VERSION}\"/" \
   "${BUNDLE}/lazygimp/__init__.py"
 
 # --- 1. zipapp: one .pyz file, runs on any python3 with Tk -----------------
-# Tk/CustomTkinter (the default GUI) only — see the "PACKAGING DECISION"
-# note up top for why PySide6 (--qt) is deliberately NOT bundled/installed
-# here. lazygimp/gui/ still gets staged along with the rest of the
-# lazygimp package below (it's plain-Python source, no extra weight to
-# speak of) so `--qt` at least fails with a clear, fast message rather than
-# an ImportError stack trace if someone tries it without PySide6 installed.
 PYZ_STAGE="${STAGE}/pyz"
 mkdir -p "$PYZ_STAGE"
 cp -a "${BUNDLE}/lazygimp" "${BUNDLE}/gimpsam" "$PYZ_STAGE/"
 python3 -m zipapp "$PYZ_STAGE" \
   --main "lazygimp.cli:main" \
   --python "/usr/bin/env python3" \
-  --output "${DIST}/lazygimp.pyz" \
+  --output "${DIST}/LazyGimp-Python.pyz" \
   --compress
-chmod +x "${DIST}/lazygimp.pyz"
+chmod +x "${DIST}/LazyGimp-Python.pyz"
+ln -sf "LazyGimp-Python.pyz" "${DIST}/lazygimp.pyz"
 
 # --- 2. PyInstaller: self-contained Linux binary ---------------------------
-# customtkinter (pure python + json/font assets), Pillow AND PySide6/Qt now
-# all ship inside the binary, so the downloaded file needs nothing at all on
-# the host system for either GUI (--qt or default).
-#
-# PySide6 is collected per-submodule (QtCore/QtGui/QtWidgets — the only
-# three lazygimp/gui/ actually imports; verified with
-# `grep -rhoE "from PySide6\.[A-Za-z0-9_]+" lazygimp/gui`) rather than a
-# blanket `--collect-all PySide6`. That blanket form pulls in EVERYTHING in
-# the wheel — QtWebEngine, Qt Quick/QML, Multimedia, Bluetooth, PDF, SQL,
-# ... — none of which this app uses; measured locally it bloats the binary
-# to ~750MB+ for zero benefit. The scoped form below still pulls in
-# everything QtCore/QtGui/QtWidgets need at runtime (platform plugins,
-# styles, etc. — PyInstaller's own PySide6 hooks handle that), just not the
-# unrelated modules. Measured locally (--onedir, uncompressed): ~220MB,
-# roughly 650MB less than the blanket approach; the final --onefile binary
-# here compresses further. Re-verify this if lazygimp/gui/ ever starts
-# importing from another PySide6 submodule (QtSvg, QtNetwork, ...) — add it
-# to the three --collect-all lines below, don't switch back to the blanket
-# form.
-#
-# PySide6 itself is NOT pip-installed by this script (same convention as
-# pyinstaller/customtkinter/pillow, none of which this script installs
-# either) — the caller is responsible for having requirements-qt.txt
-# installed first. See .github/workflows/ci.yml's `build` job and
-# .github/workflows/release.yml's "Install asset build prerequisites"
-# step for where that happens in practice.
 [[ "$STAGE_ONLY" == "1" ]] || pyinstaller --onefile --clean --noconfirm \
-  --name "lazygimp-linux-x86_64" \
+  --name "LazyGimp-Installer-Linux-x86_64" \
   --distpath "$DIST" \
   --workpath "${STAGE}/pyi-build" \
   --specpath "${STAGE}/pyi-spec" \
@@ -229,10 +198,15 @@ chmod +x "${DIST}/lazygimp.pyz"
   --collect-all PySide6.QtWidgets \
   "${BUNDLE}/installer.py"
 
+if [[ -f "${DIST}/LazyGimp-Installer-Linux-x86_64" ]]; then
+  ln -sf "LazyGimp-Installer-Linux-x86_64" "${DIST}/lazygimp-linux-x86_64"
+fi
+
 # --- 3. source zip: the folder with everything needed to run ---------------
-(cd "$STAGE" && zip -qr "${DIST}/lazygimp-src.zip" lazygimp \
+(cd "$STAGE" && zip -qr "${DIST}/LazyGimp-Source.zip" lazygimp \
   -x 'lazygimp/lazygimp/__pycache__/*')
-cp "${DIST}/lazygimp-src.zip" "${DIST}/lazygimp-${VERSION}-src.zip"
+cp "${DIST}/LazyGimp-Source.zip" "${DIST}/LazyGimp-${VERSION}-Source.zip"
+ln -sf "LazyGimp-Source.zip" "${DIST}/lazygimp-src.zip"
 
 # --- 4. Windows installer script -------------------------------------------
 cp "${ROOT}/windows/windows-install.ps1" "${DIST}/"

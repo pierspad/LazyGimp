@@ -82,11 +82,11 @@ def main() -> int:
         assert fake._wizard_can_advance() is (True if distro_detected else False)
         assert fake._wizard_next_btn is not None
         assert fake._wizard_next_btn.isEnabled() == fake._wizard_can_advance()
-        # Explicitly (re)pick AppImage regardless, exercising the click
+        # Explicitly (re)pick Flatpak regardless, exercising the click
         # path either way. This only queues a PlannedAction —
-        # install_gimp_appimage() itself is never called here.
-        fake._wizard_pick_gimp_method("appimage")
-        assert fake.plan.has("gimp_install_appimage")
+        # install_gimp_flatpak() itself is never called here.
+        fake._wizard_pick_gimp_method("flatpak")
+        assert fake.plan.has("gimp_install_flatpak")
         assert not fake.plan.has("gimp_install_pm"), "picking a method must clear the other one"
         assert fake.wizard_index == 1, "picking a GIMP method should auto-advance to the next step"
 

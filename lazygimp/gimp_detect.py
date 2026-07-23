@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from .constants import APPIMAGE_DIR, XDG_CONFIG_HOME, ensure_state_dir
+from .constants import FLATPAK_CONFIG_DIR, FLATPAK_GIMP_ID, XDG_CONFIG_HOME, ensure_state_dir
 from .job import Job
 from typing import Optional
-import glob
 import os
 import re
 import shutil
@@ -16,25 +15,32 @@ import subprocess
 # ---------------------------------------------------------------------------
 
 def find_gimp_binary() -> Optional[str]:
-    return shutil.which("gimp") or shutil.which("gimp-3.0") or shutil.which("gimp-2.10")
+    return shutil.which("gimp") or shutil.which("gimp-3.0") or shutil.which("gimp-2.10") or shutil.which("gimp.exe") or shutil.which("gimp-3.0.exe")
+
+
+def flatpak_gimp_installed() -> bool:
+    if not shutil.which("flatpak"):
+        return False
+    res = subprocess.run(["flatpak", "info", FLATPAK_GIMP_ID], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return res.returncode == 0
 
 
 def find_gimp_command() -> Optional[list[str]]:
-    """The command to *launch* GIMP with — native binary on PATH, or (for an
-    AppImage-only install, which is never on PATH) the newest AppImage."""
+    """The command to *launch* GIMP with — native binary on PATH, or Flatpak."""
     bin_ = find_gimp_binary()
     if bin_:
         return [bin_]
-    images = sorted(glob.glob(os.path.join(APPIMAGE_DIR, "GIMP-*.AppImage")))
-    return [images[-1]] if images else None
+    if flatpak_gimp_installed():
+        return ["flatpak", "run", FLATPAK_GIMP_ID]
+    return None
 
 
 def gimp_version_string() -> Optional[str]:
-    bin_ = find_gimp_binary()
-    if not bin_:
+    cmd = find_gimp_command()
+    if not cmd:
         return None
     try:
-        out = subprocess.run([bin_, "--version"], capture_output=True, text=True, timeout=10)
+        out = subprocess.run(cmd + ["--version"], capture_output=True, text=True, timeout=10)
     except Exception:
         return None
     m = re.search(r"(\d+)\.(\d+)(?:\.\d+)?", out.stdout or "")
@@ -42,7 +48,12 @@ def gimp_version_string() -> Optional[str]:
 
 
 def gimp_config_base() -> str:
-    return os.path.join(XDG_CONFIG_HOME, "GIMP")
+    native_base = os.path.join(XDG_CONFIG_HOME, "GIMP")
+    if os.path.isdir(FLATPAK_CONFIG_DIR) and not os.path.isdir(native_base):
+        return FLATPAK_CONFIG_DIR
+    if flatpak_gimp_installed() and not find_gimp_binary():
+        return FLATPAK_CONFIG_DIR
+    return native_base
 
 
 def _version_key(name: str):
@@ -53,12 +64,16 @@ def _version_key(name: str):
 
 
 def gimp_version_dirs() -> list[str]:
-    base = gimp_config_base()
-    if not os.path.isdir(base):
-        return []
-    names = [n for n in os.listdir(base) if re.fullmatch(r"\d+\.\d+", n) and os.path.isdir(os.path.join(base, n))]
-    names.sort(key=_version_key)
-    return [os.path.join(base, n) for n in names]
+    dirs = []
+    for base in [gimp_config_base(), FLATPAK_CONFIG_DIR, os.path.join(XDG_CONFIG_HOME, "GIMP")]:
+        if os.path.isdir(base):
+            names = [n for n in os.listdir(base) if re.fullmatch(r"\d+\.\d+", n) and os.path.isdir(os.path.join(base, n))]
+            names.sort(key=_version_key)
+            for n in names:
+                d = os.path.join(base, n)
+                if d not in dirs:
+                    dirs.append(d)
+    return dirs
 
 
 def gimp_live_config_dir() -> Optional[str]:
@@ -131,19 +146,19 @@ def gimp_warm_up(job: "Job", gimp_cmd: Optional[str] = None) -> None:
     pluginrc but no toolrc, which used to make this a permanent no-op on
     every retry for anyone who'd already run it once)."""
     live = gimp_live_config_dir()
-    if live and os.path.isfile(os.path.join(live, "toolrc")):
+    if live and (os.path.isfile(os.path.join(live, "pluginrc")) or os.path.isfile(os.path.join(live, "gimprc"))):
         return
     cmd = gimp_cmd or find_gimp_binary()
     if not cmd:
         return
     warmup_log = os.path.join(ensure_state_dir(), "warmup.log")
-    job.log("First GIMP start — generating configuration (one-time step, may flash briefly onscreen)...")
+    job.log("First GIMP start — initializing configuration headlessly in background...")
     timeout = int(os.environ.get("LAZYGIMP_WARMUP_TIMEOUT", "120"))
     rc = None
     try:
         with open(warmup_log, "wb") as lf:
             rc = subprocess.run(
-                [cmd, "-d", "-f", "-s",
+                [cmd, "-d", "-f", "-i", "-s",
                  "--batch-interpreter=plug-in-script-fu-eval",
                  "-b", "(gimp-quit 0)"],
                 stdin=subprocess.DEVNULL, stdout=lf, stderr=subprocess.STDOUT,
@@ -155,7 +170,7 @@ def gimp_warm_up(job: "Job", gimp_cmd: Optional[str] = None) -> None:
         job.log(f"GIMP warm-up did not finish cleanly ({e}); continuing anyway")
 
     live = gimp_live_config_dir()
-    if live and os.path.isfile(os.path.join(live, "toolrc")):
+    if live:
         job.log("GIMP configuration initialized")
     else:
         job.log(

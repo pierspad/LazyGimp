@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from .distro import detect_distro
 from .gimp_detect import find_gimp_binary, find_gimp_command
-from .gimp_install import appimage_present, gimp_native_installed, gmic_available_on_this_release, gmic_installed, install_gimp_appimage, install_gimp_package_manager, install_gmic_only, remove_gimp_appimage, remove_gimp_package_manager, remove_gmic_only
+from .gimp_install import flatpak_present, gimp_native_installed, gmic_available_on_this_release, gmic_installed, install_gimp_appimage, install_gimp_package_manager, install_gmic_only, remove_gimp_appimage, remove_gimp_package_manager, remove_gmic_only
 from .gui import launch_gui
 from .hardware import detect_hardware, recommended_model_key, recommended_torch_index
 from .job import Job
@@ -33,7 +33,7 @@ def cmd_status(_args) -> int:
     distro = detect_distro()
     print(f"Distribution family : {distro or '(unsupported/unknown)'}")
     print(f"GIMP (native pkg)   : {'installed' if gimp_native_installed() else 'not installed'}")
-    print(f"GIMP (AppImage)     : {'installed' if appimage_present() else 'not installed'}")
+    print(f"GIMP (Flatpak)      : {'installed' if flatpak_present() else 'not installed'}")
     print(f"GIMP on PATH        : {find_gimp_binary() or '(none)'}")
     print(f"PhotoGIMP           : {'installed' if photogimp_installed() else 'not installed'}")
     print(f"G'MIC               : {'installed' if gmic_installed() else 'not installed'}"
@@ -185,7 +185,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
     p_install = sub.add_parser("install", help="install one or more components")
     p_install.add_argument("components", nargs="+", choices=["gimp", "photogimp", "gmic", "sam", "batcher"])
-    p_install.add_argument("--method", choices=["package-manager", "appimage"], default=None,
+    p_install.add_argument("--method", choices=["package-manager", "flatpak"], default=None,
                             help="GIMP install method (default: auto-detected)")
     p_install.set_defaults(func=cmd_install)
 

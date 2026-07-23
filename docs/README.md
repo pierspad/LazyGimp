@@ -6,30 +6,28 @@
 [![Release](https://github.com/pierspad/LazyGimp/actions/workflows/release.yml/badge.svg)](https://github.com/pierspad/LazyGimp/actions/workflows/release.yml)
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPLv3-blue.svg)](../LICENSE)
 
-LazyGimp is a single installer app — a dark-themed GUI plus a full CLI — that installs GIMP (package manager or AppImage), applies PhotoGIMP, and sets up G'MIC, Batcher and Segment Anything (SAM). No arguments opens the GUI; every action is also a plain CLI command for headless boxes.
+LazyGimp is a single installer app — a dark-themed GUI plus a full CLI — that installs GIMP (package manager or Flatpak), applies PhotoGIMP, and sets up G'MIC, Batcher and Segment Anything (SAM). No arguments opens the GUI; every action is also a plain CLI command for headless boxes.
 
 ## Quick start (Linux)
 
-Pick **one** of the three release artifacts — they are the same program, packaged three ways:
+Pick **one** of the release artifacts:
 
-| Artifact | Requirements | How to run |
+| Artifact | Description / Requirements | How to run |
 |---|---|---|
-| [`lazygimp-linux-x86_64`](https://github.com/pierspad/LazyGimp/releases/latest/download/lazygimp-linux-x86_64) | none (self-contained: Python, Tk, GUI toolkit all inside) | `chmod +x lazygimp-linux-x86_64 && ./lazygimp-linux-x86_64` |
-| [`lazygimp.pyz`](https://github.com/pierspad/LazyGimp/releases/latest/download/lazygimp.pyz) | `python3` + Tk; GUI also needs `pip install customtkinter` (CLI doesn't) | `python3 lazygimp.pyz` |
-| [`lazygimp-src.zip`](https://github.com/pierspad/LazyGimp/releases/latest/download/lazygimp-src.zip) | same as the `.pyz` | see below |
+| [`LazyGimp-Installer-Linux-x86_64`](https://github.com/pierspad/LazyGimp/releases/latest/download/LazyGimp-Installer-Linux-x86_64) | **Standalone Linux Executable** (zero dependencies, Qt GUI + CLI) | `chmod +x LazyGimp-Installer-Linux-x86_64 && ./LazyGimp-Installer-Linux-x86_64` |
+| [`LazyGimp-Python.pyz`](https://github.com/pierspad/LazyGimp/releases/latest/download/LazyGimp-Python.pyz) | Portable Python ZipApp (`python3` + PySide6 / Tk) | `python3 LazyGimp-Python.pyz` |
+| [`LazyGimp-Source.zip`](https://github.com/pierspad/LazyGimp/releases/latest/download/LazyGimp-Source.zip) | Source Code Zip | see below |
 
-The binary is the recommended download: it's disposable by design — tick *"Delete this installer when it closes"* on its start screen (or launch with `--ephemeral`) and it removes itself once you're done, leaving the folder clean.
-
-One-liner (binary, zero dependencies):
+One-liner (Linux executable, zero dependencies):
 
 ```bash
-curl -fsSL -o lazygimp https://github.com/pierspad/LazyGimp/releases/latest/download/lazygimp-linux-x86_64 && chmod +x lazygimp && ./lazygimp
+curl -fsSL -o LazyGimp-Installer-Linux-x86_64 https://github.com/pierspad/LazyGimp/releases/latest/download/LazyGimp-Installer-Linux-x86_64 && chmod +x LazyGimp-Installer-Linux-x86_64 && ./LazyGimp-Installer-Linux-x86_64
 ```
 
 ### Running from the zip
 
 ```bash
-unzip lazygimp-src.zip
+unzip LazyGimp-Source.zip
 cd lazygimp
 python3 installer.py            # GUI
 python3 installer.py --help     # CLI
@@ -44,14 +42,14 @@ python3 installer.py            # GUI  (equivalent: python3 -m lazygimp)
 python3 installer.py status     # CLI
 ```
 
-Requirements when running from source or the `.pyz`: Python 3.10+ with Tkinter (`sudo apt install python3-tk` on Debian/Ubuntu; usually preinstalled elsewhere) and, for the GUI only, [CustomTkinter](https://customtkinter.tomschimansky.com) (`pip install customtkinter`). The CLI needs neither. [Pillow](https://python-pillow.org) is optional — nicer anti-aliased icons if present. The prebuilt binary bundles everything.
+Requirements when running from source or the `.pyz`: Python 3.10+ with Qt (`pip install -r requirements-qt.txt`). The prebuilt binary bundles everything.
 
 ### CLI in 20 seconds
 
 ```bash
 python3 installer.py status                          # what's installed
 python3 installer.py install gimp photogimp gmic sam batcher
-python3 installer.py install gimp --method appimage  # force a method
+python3 installer.py install gimp --method flatpak  # force a method
 python3 installer.py remove batcher
 python3 installer.py sam list                        # SAM models & install state
 python3 installer.py sam install sam2_hiera_small
@@ -60,11 +58,14 @@ python3 installer.py fix-desktop                     # repair the menu entry
 python3 installer.py --ephemeral                     # GUI, self-deletes on exit
 ```
 
-**Package manager or AppImage?** On rolling or fast-moving distros (Arch, Fedora, openSUSE Tumbleweed) the package manager is the best choice: native, integrated, current. On Debian stable or Ubuntu LTS the repos ship an old GIMP — there the AppImage is the honest recommendation, and LazyGimp tells you exactly that if it detects GIMP 2.x. Supported out of the box: **Arch**, **Fedora**, **Debian**, **Ubuntu**, **openSUSE** — and their derivatives (Manjaro, EndeavourOS, Linux Mint, Pop!\_OS, Nobara, ...) via `ID_LIKE` matching.
+**Package manager or Flatpak?** On rolling or fast-moving distros (Arch, Fedora, openSUSE Tumbleweed) the package manager is the best choice: native, integrated, current. On Debian stable or Ubuntu LTS the repos ship an old GIMP — there Flatpak (from Flathub) is the recommended option. Supported out of the box: **Arch**, **Fedora**, **Debian**, **Ubuntu**, **openSUSE** — and their derivatives (Manjaro, EndeavourOS, Linux Mint, Pop!\_OS, Nobara, ...) via `ID_LIKE` matching.
 
 ## Quick start (Windows)
 
-[![windows-install.ps1](https://img.shields.io/badge/⬇-windows--install.ps1-0078d4)](https://github.com/pierspad/LazyGimp/releases/latest/download/windows-install.ps1) — download, then:
+Download **[`LazyGimp-Installer-Windows.exe`](https://github.com/pierspad/LazyGimp/releases/latest/download/LazyGimp-Installer-Windows.exe)** and double-click it to start the guided installer GUI!
+
+Alternatively, if you prefer PowerShell:
+[![windows-install.ps1](https://img.shields.io/badge/⬇-windows--install.ps1-0078d4)](https://github.com/pierspad/LazyGimp/releases/latest/download/windows-install.ps1)
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File windows-install.ps1
@@ -122,7 +123,7 @@ The exact values are saved in `~/.local/share/lazygimp/segany/INFO.txt`. Checkpo
 
 ## Re-running & updating
 
-Every action is **idempotent** — re-running is the supported way to update or repair. Whatever is already present and valid is kept (native packages, an intact AppImage of the same version, the SAM virtualenv and any checkpoint already downloaded are never re-fetched); whatever is missing is added; whatever LazyGimp manages (PhotoGIMP layer, plug-in folders) is **brutally overwritten** with the current version — after the usual timestamped backup of your GIMP configuration. Your personal files (brushes, scripts, your own plug-ins) are never touched.
+Every action is **idempotent** — re-running is the supported way to update or repair. Whatever is already present and valid is kept (native packages, an intact Flatpak installation, the SAM virtualenv and any checkpoint already downloaded are never re-fetched); whatever is missing is added; whatever LazyGimp manages (PhotoGIMP layer, plug-in folders) is **brutally overwritten** with the current version — after the usual timestamped backup of your GIMP configuration. Your personal files (brushes, scripts, your own plug-ins) are never touched.
 
 
 ## Credits & licenses

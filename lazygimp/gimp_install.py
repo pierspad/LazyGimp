@@ -1,18 +1,13 @@
 from __future__ import annotations
 
-from .constants import APPIMAGE_DIR, GIMP_DOWNLOAD_MIRROR, GIMP_VERSIONS_JSON_URL, GMIC_DOWNLOAD_PAGE
+from .constants import FLATPAK_GIMP_ID, FLATPAK_GMIC_ID, GMIC_DOWNLOAD_PAGE
 from .distro import DISTROS, detect_distro
 from .gimp_detect import gimp_warm_up
 from .job import Job
-from typing import Optional
-import glob
-import json
-import os
-import platform
-import urllib.request
+import shutil
 
 # ---------------------------------------------------------------------------
-# GIMP itself — package manager or official AppImage.
+# GIMP itself — package manager or Flatpak.
 # ---------------------------------------------------------------------------
 
 def gimp_native_installed() -> bool:
@@ -38,8 +33,15 @@ def gmic_available_on_this_release() -> bool:
     return bool(DISTROS[distro].gmic_pkgs())
 
 
-def appimage_present() -> bool:
-    return bool(glob.glob(os.path.join(APPIMAGE_DIR, "GIMP-*.AppImage")))
+def flatpak_present() -> bool:
+    if not shutil.which("flatpak"):
+        return False
+    import subprocess
+    res = subprocess.run(["flatpak", "info", FLATPAK_GIMP_ID], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return res.returncode == 0
+
+
+appimage_present = flatpak_present
 
 
 def install_gimp_package_manager(job: Job, include_gmic: bool = True) -> bool:
@@ -121,74 +123,43 @@ def remove_gimp_package_manager(job: Job) -> bool:
     return job.run_root(fam.remove_cmd(pkgs)) == 0
 
 
-def _latest_appimage_info() -> Optional[tuple[str, str, str]]:
-    arch = platform.machine()
-    with urllib.request.urlopen(GIMP_VERSIONS_JSON_URL, timeout=20) as resp:
-        data = json.load(resp)
-    for release in data.get("STABLE", []):
-        for image in release.get("appimage", []):
-            if arch in image.get("filename", ""):
-                return release["version"], image["filename"], image["sha256"]
-    return None
+def install_gimp_flatpak(job: Job, include_gmic: bool = True) -> bool:
+    if not shutil.which("flatpak"):
+        job.log("Flatpak is not installed on this system. Attempting to install flatpak...")
+        distro = detect_distro()
+        if distro:
+            fam = DISTROS[distro]
+            job.run_root(fam.install_cmd(["flatpak"]))
+        if not shutil.which("flatpak"):
+            job.log("ERROR: 'flatpak' binary could not be found or installed.")
+            return False
 
+    job.log("Adding Flathub repository (if not already present)...")
+    job.run(["flatpak", "remote-add", "--if-not-exists", "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo"])
 
-def install_gimp_appimage(job: Job) -> Optional[tuple[str, str]]:
-    """Returns (appimage_path, version) on success, so callers (PhotoGIMP)
-    can hint the exact profile GIMP will use and retarget the desktop
-    launcher at this exact file (it is never on PATH)."""
-    info = _latest_appimage_info()
-    if not info:
-        job.log(f"No official GIMP AppImage published for architecture {platform.machine()}.")
-        return None
-    version, filename, sha256 = info
-    series = version.rsplit(".", 1)[0]
-    url = f"{GIMP_DOWNLOAD_MIRROR}/v{series}/linux/{filename}"
-    os.makedirs(APPIMAGE_DIR, exist_ok=True)
-    dest = os.path.join(APPIMAGE_DIR, filename)
+    job.log(f"Installing GIMP Flatpak ({FLATPAK_GIMP_ID})...")
+    rc = job.run(["flatpak", "install", "-y", "flathub", FLATPAK_GIMP_ID])
+    if rc != 0:
+        job.log(f"Flatpak install failed for {FLATPAK_GIMP_ID} (exit {rc}).")
+        return False
 
-    if os.path.isfile(dest) and _sha256_of(dest) == sha256:
-        job.log(f"GIMP {version} AppImage already present and verified — skipping download")
-    else:
-        if not job.download(url, dest):
-            return None
-        actual = _sha256_of(dest)
-        if actual != sha256:
-            job.log(f"ERROR: checksum mismatch for {dest} (expected {sha256}, got {actual})")
-            os.remove(dest)
-            return None
-        job.log(f"Checksum verified for {os.path.basename(dest)}")
-    os.chmod(dest, 0o755)
-    symlink = os.path.join(APPIMAGE_DIR, "GIMP.AppImage")
-    try:
-        if os.path.islink(symlink) or os.path.exists(symlink):
-            os.remove(symlink)
-        os.symlink(filename, symlink)
-    except OSError as e:
-        job.log(f"Could not create GIMP.AppImage symlink: {e} (not fatal)")
-    job.log(f"GIMP {version} AppImage installed at {dest} (symlink: GIMP.AppImage)")
-    gimp_warm_up(job, dest)
-    return dest, version
+    if include_gmic:
+        job.log(f"Installing G'MIC Flatpak extension ({FLATPAK_GMIC_ID})...")
+        job.run(["flatpak", "install", "-y", "flathub", FLATPAK_GMIC_ID])
 
-
-def remove_gimp_appimage(job: Job) -> bool:
-    removed = False
-    for pattern in ("GIMP-*.AppImage", "GIMP.AppImage"):
-        for f in glob.glob(os.path.join(APPIMAGE_DIR, pattern)):
-            try:
-                os.remove(f)
-                job.log(f"Removed {f}")
-                removed = True
-            except OSError as e:
-                job.log(f"Could not remove {f}: {e}")
-    if not removed:
-        job.log("No GIMP AppImage found.")
+    job.log("GIMP Flatpak installed successfully.")
+    gimp_warm_up(job)
     return True
 
 
-def _sha256_of(path: str) -> str:
-    import hashlib
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()
+def remove_gimp_flatpak(job: Job) -> bool:
+    if not shutil.which("flatpak"):
+        job.log("Flatpak is not installed on this system.")
+        return True
+    job.log(f"Removing GIMP Flatpak ({FLATPAK_GIMP_ID}) and G'MIC extension...")
+    rc = job.run(["flatpak", "uninstall", "-y", FLATPAK_GIMP_ID, FLATPAK_GMIC_ID])
+    return rc == 0
+
+
+install_gimp_appimage = install_gimp_flatpak
+remove_gimp_appimage = remove_gimp_flatpak

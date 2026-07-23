@@ -9,7 +9,7 @@ One installer, GUI (Tkinter) and CLI, split into small modules:
     gimp_detect   what GIMP is installed, where its config lives
     job           background work + logging
     plan          the wizard's data model (planned actions)
-    gimp_install  GIMP via package manager or AppImage
+    gimp_install  GIMP via package manager or Flatpak
     photogimp     the PhotoGIMP configuration layer
     plugins       plug-in folders (Batcher, seganyplugin)
     sam_backend   SAM venv + PyTorch backend

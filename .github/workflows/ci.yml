@@ -129,9 +129,9 @@ jobs:
 
       - name: Assets must actually run
         run: |
-          ./dist/lazygimp.pyz --help
-          ./dist/lazygimp-linux-x86_64 --help
-          ./dist/lazygimp-linux-x86_64 status
+          ./dist/LazyGimp-Python.pyz --help
+          ./dist/LazyGimp-Installer-Linux-x86_64 --help
+          ./dist/LazyGimp-Installer-Linux-x86_64 status
 
   workflows:
     name: Lint workflows (actionlint)
@@ -157,3 +157,26 @@ jobs:
           $results = Invoke-ScriptAnalyzer -Path windows -Recurse -Severity Warning
           $results | Format-Table -AutoSize
           if ($results | Where-Object Severity -eq 'Error') { exit 1 }
+
+  build-windows:
+    name: Build Windows executable (LazyGimp-Installer-Windows.exe)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install build prerequisites
+        run: |
+          pip install pyinstaller customtkinter pillow -r requirements-qt.txt
+
+      - name: Build Windows Executable
+        run: |
+          pyinstaller --onefile --clean --noconfirm --name "LazyGimp-Installer-Windows.exe" --paths lazygimp --hidden-import gimpsam --collect-all customtkinter --collect-submodules PIL --collect-submodules lazygimp.gui --collect-all PySide6.QtCore --collect-all PySide6.QtGui --collect-all PySide6.QtWidgets installer.py
+
+      - name: Test Windows Executable Help Output
+        run: |
+          .\dist\LazyGimp-Installer-Windows.exe --help
+

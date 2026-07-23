@@ -130,7 +130,7 @@ class UninstallPage:
                 row_layout.setSpacing(12)
                 card_body_layout.addWidget(row)
 
-                icon_kind = "gimp" if ("package-manager" in key or "appimage" in key) else ("photogimp" if "photogimp" in key else ("batcher" if "batcher" in key else "bolt"))
+                icon_kind = "gimp" if ("package-manager" in key or "flatpak" in key or "appimage" in key) else ("photogimp" if "photogimp" in key else ("batcher" if "batcher" in key else "bolt"))
                 row_layout.addWidget(icon_label(row, icon_kind, color=ACCENT, size=28))
 
                 col = QWidget(row)
@@ -235,7 +235,7 @@ class UninstallPage:
             if "sam" in keys:
                 remove_segany_plugin(job)
                 remove_sam_backend(job)
-            if "appimage" in keys:
+            if "flatpak" in keys or "appimage" in keys:
                 remove_gimp_appimage(job)
             if "package-manager" in keys:
                 if needs_root:

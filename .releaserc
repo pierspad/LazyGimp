@@ -54,10 +54,14 @@
       "@semantic-release/github",
       {
         "assets": [
+          { "path": "dist/LazyGimp-Installer-Linux-x86_64" },
+          { "path": "dist/LazyGimp-Installer-Windows.exe" },
+          { "path": "dist/LazyGimp-Python.pyz" },
+          { "path": "dist/LazyGimp-Source.zip" },
+          { "path": "dist/LazyGimp-*-Source.zip" },
           { "path": "dist/lazygimp-linux-x86_64" },
           { "path": "dist/lazygimp.pyz" },
           { "path": "dist/lazygimp-src.zip" },
-          { "path": "dist/lazygimp-*-src.zip" },
           { "path": "dist/windows-install.ps1" },
           { "path": "dist/checksums.txt" }
         ],
