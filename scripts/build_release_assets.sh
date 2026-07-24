@@ -168,13 +168,19 @@ python3 -m zipapp "$PYZ_STAGE" \
   --compress
 chmod +x "${DIST}/LazyGimp-Python.pyz"
 
-# --- 2. PyInstaller: self-contained Linux binary ---------------------------
+# --- 2. PyInstaller: self-contained binary (Linux / Windows) ----------------
+EXE_NAME="${EXE_NAME:-LazyGimp-Installer-Linux}"
+if [[ "${OS:-}" == "Windows_NT" || "${OSTYPE:-}" == "msys" || "${OSTYPE:-}" == "cygwin" || "${OSTYPE:-}" == "win32" ]]; then
+  EXE_NAME="LazyGimp-Installer-Windows.exe"
+fi
+
 [[ "$STAGE_ONLY" == "1" ]] || pyinstaller --onefile --clean --noconfirm \
-  --name "LazyGimp-Installer-Linux" \
+  --name "$EXE_NAME" \
   --distpath "$DIST" \
   --workpath "${STAGE}/pyi-build" \
   --specpath "${STAGE}/pyi-spec" \
   --paths "$BUNDLE" \
+  --hidden-import platform \
   --hidden-import tkinter \
   --hidden-import gimpsam \
   --hidden-import gimpsam.constants \
