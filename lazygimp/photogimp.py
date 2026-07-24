@@ -3,7 +3,7 @@ from __future__ import annotations
 from .constants import DESKTOP_FILES_MANIFEST, PHOTOGIMP_BRANCH, PHOTOGIMP_EXCLUDE, PHOTOGIMP_MANIFEST, PHOTOGIMP_RELEASE_TAG, PHOTOGIMP_REPO, STATE_DIR, XDG_DATA_HOME, ensure_state_dir
 from .gimp_detect import _version_key, find_gimp_command, gimp_config_dir, gimp_live_config_dir, gimp_version_dirs
 from .job import Job
-from .util import fetch_github_repo_info, fetch_latest_github_release_assets, github_branch_archive_url
+from .util import clean_subprocess_env, fetch_github_repo_info, fetch_latest_github_release_assets, github_branch_archive_url
 from typing import Optional
 import glob
 import os
@@ -38,12 +38,14 @@ def _gimp_is_running() -> bool:
     import sys
     if sys.platform == "win32":
         try:
-            res = subprocess.run(["tasklist", "/FI", "IMAGENAME eq gimp*"], capture_output=True, text=True, timeout=5)
+            res = subprocess.run(["tasklist", "/FI", "IMAGENAME eq gimp*"], capture_output=True, text=True, timeout=5,
+                                  env=clean_subprocess_env())
             return "gimp" in res.stdout.lower()
         except Exception:
             return False
     try:
-        res = subprocess.run(["ps", "-eo", "pid,comm,args"], capture_output=True, text=True, timeout=5)
+        res = subprocess.run(["ps", "-eo", "pid,comm,args"], capture_output=True, text=True, timeout=5,
+                              env=clean_subprocess_env())
         if res.returncode != 0:
             return False
         mypid = os.getpid()
@@ -283,10 +285,11 @@ def _photogimp_install_desktop_files(extracted: str, gimp_command: Optional[list
 
     if shutil.which("update-desktop-database"):
         subprocess.run(["update-desktop-database", os.path.join(XDG_DATA_HOME, "applications")],
-                        capture_output=True)
+                        capture_output=True, env=clean_subprocess_env())
     icon_theme_dir = os.path.join(XDG_DATA_HOME, "icons", "hicolor")
     if shutil.which("gtk-update-icon-cache") and os.path.isdir(icon_theme_dir):
-        subprocess.run(["gtk-update-icon-cache", "-q", "-t", "-f", icon_theme_dir], capture_output=True)
+        subprocess.run(["gtk-update-icon-cache", "-q", "-t", "-f", icon_theme_dir], capture_output=True,
+                        env=clean_subprocess_env())
         job.log(f"Refreshed the icon cache ({icon_theme_dir})")
     job.log("PhotoGIMP desktop entry installed (launches the GIMP LazyGimp set up)")
 
@@ -357,10 +360,11 @@ def repair_desktop_integration(job: Job) -> bool:
             f"StartupWMClass={wm_class}) — restart GIMP (and re-pin it) to see the fix.")
 
     if shutil.which("update-desktop-database"):
-        subprocess.run(["update-desktop-database", apps_dir], capture_output=True)
+        subprocess.run(["update-desktop-database", apps_dir], capture_output=True, env=clean_subprocess_env())
     icon_theme_dir = os.path.join(XDG_DATA_HOME, "icons", "hicolor")
     if shutil.which("gtk-update-icon-cache") and os.path.isdir(icon_theme_dir):
-        subprocess.run(["gtk-update-icon-cache", "-q", "-t", "-f", icon_theme_dir], capture_output=True)
+        subprocess.run(["gtk-update-icon-cache", "-q", "-t", "-f", icon_theme_dir], capture_output=True,
+                        env=clean_subprocess_env())
     return True
 
 
@@ -378,7 +382,7 @@ def _photogimp_remove_desktop_files(job: Job) -> None:
     os.remove(DESKTOP_FILES_MANIFEST)
     if shutil.which("update-desktop-database"):
         subprocess.run(["update-desktop-database", os.path.join(XDG_DATA_HOME, "applications")],
-                        capture_output=True)
+                        capture_output=True, env=clean_subprocess_env())
 
 
 def install_photogimp(job: Job, version_hint: Optional[str] = None, gimp_command: Optional[str | list[str]] = None, target: Optional[str] = None) -> bool:

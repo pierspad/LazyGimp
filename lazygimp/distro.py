@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .util import clean_subprocess_env
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 import subprocess
@@ -23,23 +24,23 @@ class DistroFamily:
 
 
 def _dpkg_installed(pkg: str) -> bool:
-    return subprocess.run(["dpkg", "-s", pkg], capture_output=True).returncode == 0
+    return subprocess.run(["dpkg", "-s", pkg], capture_output=True, env=clean_subprocess_env()).returncode == 0
 
 
 def _rpm_installed(pkg: str) -> bool:
-    return subprocess.run(["rpm", "-q", pkg], capture_output=True).returncode == 0
+    return subprocess.run(["rpm", "-q", pkg], capture_output=True, env=clean_subprocess_env()).returncode == 0
 
 
 def _pacman_installed(pkg: str) -> bool:
-    return subprocess.run(["pacman", "-Qi", pkg], capture_output=True).returncode == 0
+    return subprocess.run(["pacman", "-Qi", pkg], capture_output=True, env=clean_subprocess_env()).returncode == 0
 
 
 def _apt_cache_has(pkg: str) -> bool:
-    return subprocess.run(["apt-cache", "show", pkg], capture_output=True).returncode == 0
+    return subprocess.run(["apt-cache", "show", pkg], capture_output=True, env=clean_subprocess_env()).returncode == 0
 
 
 def _apt_candidate_is_gimp2() -> bool:
-    out = subprocess.run(["apt-cache", "policy", "gimp"], capture_output=True, text=True)
+    out = subprocess.run(["apt-cache", "policy", "gimp"], capture_output=True, text=True, env=clean_subprocess_env())
     for line in out.stdout.splitlines():
         line = line.strip()
         if line.startswith("Candidate:"):

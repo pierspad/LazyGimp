@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .constants import FLATPAK_CONFIG_DIR, FLATPAK_GIMP_ID, XDG_CONFIG_HOME, ensure_state_dir
 from .job import Job
+from .util import clean_subprocess_env
 from typing import Optional
 import os
 import re
@@ -38,7 +39,8 @@ def find_gimp_binary() -> Optional[str]:
 def flatpak_gimp_installed() -> bool:
     if not shutil.which("flatpak"):
         return False
-    res = subprocess.run(["flatpak", "info", FLATPAK_GIMP_ID], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    res = subprocess.run(["flatpak", "info", FLATPAK_GIMP_ID], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                          env=clean_subprocess_env())
     return res.returncode == 0
 
 
@@ -57,7 +59,7 @@ def gimp_version_string() -> Optional[str]:
     if not cmd:
         return None
     try:
-        out = subprocess.run(cmd + ["--version"], capture_output=True, text=True, timeout=10)
+        out = subprocess.run(cmd + ["--version"], capture_output=True, text=True, timeout=10, env=clean_subprocess_env())
     except Exception:
         return None
     m = re.search(r"(\d+)\.(\d+)(?:\.\d+)?", out.stdout or "")
@@ -184,7 +186,7 @@ def gimp_warm_up(job: "Job", gimp_cmd: Optional[str] = None) -> None:
                  "--batch-interpreter=plug-in-script-fu-eval",
                  "-b", "(gimp-quit 0)"],
                 stdin=subprocess.DEVNULL, stdout=lf, stderr=subprocess.STDOUT,
-                timeout=timeout,
+                timeout=timeout, env=clean_subprocess_env(),
             ).returncode
     except subprocess.TimeoutExpired:
         job.log(f"GIMP warm-up did not finish within {timeout}s (log: {warmup_log}); continuing anyway")

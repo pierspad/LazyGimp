@@ -50,16 +50,21 @@ def cmd_status(_args) -> int:
 def cmd_install(args) -> int:
     job = _cli_job()
     ok = True
+    # Same "pm" / "flatpak" convention gimp_config_base() understands, so
+    # PhotoGIMP/G'MIC land in whichever GIMP this invocation is actually
+    # installing/targeting instead of gimp_config_base()'s auto-detect guess
+    # (which can pick the wrong one right after a fresh install).
+    method = args.method or ("package-manager" if detect_distro() else "appimage")
+    gimp_target = "pm" if method == "package-manager" else "flatpak"
     for comp in args.components:
         if comp == "gimp":
-            method = args.method or ("package-manager" if detect_distro() else "appimage")
             ok &= bool(install_gimp_package_manager(job, include_gmic=False) if method == "package-manager"
                        else install_gimp_appimage(job))
         elif comp == "photogimp":
             cmd = find_gimp_command()
-            ok &= install_photogimp(job, gimp_command=(cmd[0] if cmd else None))
+            ok &= install_photogimp(job, gimp_command=(cmd[0] if cmd else None), target=gimp_target)
         elif comp == "gmic":
-            ok &= install_gmic_only(job)
+            ok &= install_gmic_only(job, target=gimp_target)
         elif comp == "sam":
             ok &= install_segany_plugin(job)
             hw = detect_hardware()

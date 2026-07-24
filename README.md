@@ -21,9 +21,7 @@ You can find the downloadable files in [the latest release](https://github.com/p
 **Linux one-liner:**
 
 ```bash
-curl -fsSL -o LazyGimp-Installer-Linux https://github.com/pierspad/LazyGimp/releases/latest/download/LazyGimp-Installer-Linux
-chmod +x LazyGimp-Installer-Linux
-./LazyGimp-Installer-Linux
+curl -fsSL -o LazyGimp-Installer-Linux https://github.com/pierspad/LazyGimp/releases/latest/download/LazyGimp-Installer-Linux && chmod +x LazyGimp-Installer-Linux && ./LazyGimp-Installer-Linux
 ```
 
 **From source:**

@@ -4,6 +4,7 @@ from .constants import FLATPAK_GIMP_ID, FLATPAK_GMIC_ID, GMIC_DOWNLOAD_PAGE
 from .distro import DISTROS, detect_distro
 from .gimp_detect import gimp_warm_up
 from .job import Job
+from .util import clean_subprocess_env
 import shutil
 
 # ---------------------------------------------------------------------------
@@ -22,7 +23,8 @@ def gmic_installed(target: str = "pm") -> bool:
         if not shutil.which("flatpak"):
             return False
         import subprocess
-        res = subprocess.run(["flatpak", "info", FLATPAK_GMIC_ID], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        res = subprocess.run(["flatpak", "info", FLATPAK_GMIC_ID], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                              env=clean_subprocess_env())
         return res.returncode == 0
     distro = detect_distro()
     if not distro:
@@ -45,7 +47,8 @@ def flatpak_present() -> bool:
     if not shutil.which("flatpak"):
         return False
     import subprocess
-    res = subprocess.run(["flatpak", "info", FLATPAK_GIMP_ID], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    res = subprocess.run(["flatpak", "info", FLATPAK_GIMP_ID], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                          env=clean_subprocess_env())
     return res.returncode == 0
 
 

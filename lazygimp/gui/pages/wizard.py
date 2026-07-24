@@ -294,14 +294,16 @@ class WizardPages:
                     "gimp_install_pm", "Install GIMP (package manager)", "install",
                     lambda job: install_gimp_package_manager(job, include_gmic=False)))
 
-        if not photogimp_installed():
+        if not photogimp_installed(target=self.selected_gimp_target):
             self.plan.add(PlannedAction(
                 "photogimp:install", "Install PhotoGIMP", "install",
-                lambda job: install_photogimp(job, gimp_command=find_gimp_command())))
+                lambda job, t=self.selected_gimp_target: install_photogimp(
+                    job, gimp_command=find_gimp_command(), target=t)))
 
-        if gmic_available_on_this_release() and not gmic_installed():
-            self.plan.add(PlannedAction("gmic:install", "Install G'MIC", "install",
-                                         lambda job: install_gmic_only(job)))
+        if gmic_available_on_this_release(target=self.selected_gimp_target) and not gmic_installed(target=self.selected_gimp_target):
+            self.plan.add(PlannedAction(
+                "gmic:install", "Install G'MIC", "install",
+                lambda job, t=self.selected_gimp_target: install_gmic_only(job, target=t)))
 
         if not batcher_installed():
             self.plan.add(PlannedAction("batcher:install", "Install Batcher", "install",
@@ -814,6 +816,21 @@ class WizardPages:
         self.selected_gimp_target = method
         self.plan.discard("gimp_install_pm")
         self.plan.discard("gimp_install_flatpak")
+        # PhotoGIMP/G'MIC may already be queued from show_wizard()'s initial
+        # guess (made before this page was ever visited) or from a previous
+        # visit to this page with a different method picked. Re-bind them to
+        # whatever was just picked here so they don't silently install
+        # against the wrong GIMP (native vs Flatpak) — this is what let a
+        # "Flatpak" choice quietly apply PhotoGIMP/G'MIC to a package-manager
+        # GIMP instead.
+        if self.plan.has("photogimp:install"):
+            self.plan.add(PlannedAction(
+                "photogimp:install", "Install PhotoGIMP", "install",
+                lambda job, t=method: install_photogimp(job, gimp_command=find_gimp_command(), target=t)))
+        if self.plan.has("gmic:install"):
+            self.plan.add(PlannedAction(
+                "gmic:install", "Install G'MIC", "install",
+                lambda job, t=method: install_gmic_only(job, target=t)))
         if method == "pm":
             if not gimp_native_installed():
                 action = PlannedAction("gimp_install_pm", "Install GIMP (package manager)", "install",

@@ -31,6 +31,7 @@ from ...plugins import (
     write_segany_plugin_settings,
 )
 from ...sam_backend import backend_ready, bridge_self_test, install_sam_backend, write_sam_info
+from ...util import clean_subprocess_env
 # state.py is pure detection logic (no Tk import) — reused as-is rather
 # than duplicated/re-ported, see gui/state.py.
 from ...gui.state import anything_installed
@@ -234,7 +235,8 @@ class LandingPage:
             show_snackbar(self, "GIMP not found", tone="error")
             return
         try:
-            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True,
+                              env=clean_subprocess_env())
         except Exception as e:
             show_snackbar(self, f"Couldn't launch GIMP: {e}", tone="error")
             return
@@ -257,6 +259,11 @@ class LandingPage:
     def _build_quick_setup_plan(self) -> list["PlannedAction"]:
         actions: list[PlannedAction] = []
 
+        # Which GIMP this run targets — needed below so PhotoGIMP/G'MIC land
+        # in the same GIMP's config dir instead of defaulting to whichever
+        # one gimp_config_base()'s auto-detect heuristic happens to guess.
+        target = "pm" if (find_gimp_binary() or detect_distro()) else "flatpak"
+
         if not find_gimp_binary() and not appimage_present():
             if detect_distro():
                 actions.append(PlannedAction(
@@ -267,14 +274,14 @@ class LandingPage:
                     "gimp:install", "Install GIMP (AppImage)", "install",
                     lambda job: install_gimp_appimage(job)))
 
-        if not photogimp_installed():
+        if not photogimp_installed(target=target):
             actions.append(PlannedAction(
                 "photogimp:install", "Install PhotoGIMP", "install",
-                lambda job: install_photogimp(job, gimp_command=find_gimp_command())))
+                lambda job, t=target: install_photogimp(job, gimp_command=find_gimp_command(), target=t)))
 
-        if gmic_available_on_this_release() and not gmic_installed():
+        if gmic_available_on_this_release(target=target) and not gmic_installed(target=target):
             actions.append(PlannedAction("gmic:install", "Install G'MIC", "install",
-                                          lambda job: install_gmic_only(job)))
+                                          lambda job, t=target: install_gmic_only(job, target=t)))
 
         if not segany_plugin_installed():
             actions.append(PlannedAction("sam_plugin:install", "Install the SAM plug-in", "install",

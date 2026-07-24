@@ -174,34 +174,65 @@ if [[ "${OS:-}" == "Windows_NT" || "${OSTYPE:-}" == "msys" || "${OSTYPE:-}" == "
   EXE_NAME="LazyGimp-Installer-Windows.exe"
 fi
 
-[[ "$STAGE_ONLY" == "1" ]] || pyinstaller --onefile --clean --noconfirm \
-  --name "$EXE_NAME" \
+# A plain `pyinstaller --collect-all PySide6.Qt*` also pulls in the
+# libfontconfig.so Qt vendors alongside its platform plugins. That copy is
+# routinely older than the schema of the *host's* /etc/fonts/*.conf (recent
+# fontconfig adds generic families like system-ui/ui-serif/math/emoji and an
+# xsi:nil attribute the bundled parser doesn't know), so every run prints a
+# wall of harmless "Fontconfig warning: invalid attribute/constant" noise to
+# stderr. The binary never ships its own conf.d — it always reads the host's
+# — so dropping the bundled lib and letting the loader resolve the host's own
+# (schema-matched) libfontconfig.so instead fixes it with no functional
+# change. PyInstaller only exposes this as a spec-level filter on
+# `a.binaries`, not a CLI flag, hence the generated spec below instead of a
+# one-line `pyinstaller ...` call.
+SPEC_DIR="${STAGE}/pyi-spec"
+mkdir -p "$SPEC_DIR"
+SPEC_FILE="${SPEC_DIR}/lazygimp.spec"
+cat >"$SPEC_FILE" <<EOF
+# -*- mode: python ; coding: utf-8 -*-
+import os
+from PyInstaller.utils.hooks import collect_all, collect_submodules
+
+hiddenimports = [
+    "platform", "tkinter",
+    "gimpsam", "gimpsam.constants", "gimpsam.models", "gimpsam.hardware",
+    "gimpsam.backend", "gimpsam.sam3", "gimpsam.plugin", "gimpsam.gimp_dirs",
+    "gimpsam.compat", "gimpsam.job", "gimpsam.plan", "gimpsam.util",
+]
+hiddenimports += collect_submodules("gimpsam")
+hiddenimports += collect_submodules("PIL")
+hiddenimports += collect_submodules("lazygimp.gui")
+
+datas = []
+binaries = []
+for pkg in ("customtkinter", "PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidgets"):
+    pkg_datas, pkg_binaries, pkg_hidden = collect_all(pkg)
+    datas += pkg_datas
+    binaries += pkg_binaries
+    hiddenimports += pkg_hidden
+
+binaries = [b for b in binaries if "libfontconfig" not in os.path.basename(b[0]).lower()]
+
+a = Analysis(
+    [r"${BUNDLE}/installer.py"],
+    pathex=[r"${BUNDLE}"],
+    binaries=binaries,
+    datas=datas,
+    hiddenimports=hiddenimports,
+)
+pyz = PYZ(a.pure)
+exe = EXE(
+    pyz, a.scripts, a.binaries, a.zipfiles, a.datas, [],
+    name="${EXE_NAME}",
+    console=True,
+)
+EOF
+
+[[ "$STAGE_ONLY" == "1" ]] || pyinstaller --clean --noconfirm \
   --distpath "$DIST" \
   --workpath "${STAGE}/pyi-build" \
-  --specpath "${STAGE}/pyi-spec" \
-  --paths "$BUNDLE" \
-  --hidden-import platform \
-  --hidden-import tkinter \
-  --hidden-import gimpsam \
-  --hidden-import gimpsam.constants \
-  --hidden-import gimpsam.models \
-  --hidden-import gimpsam.hardware \
-  --hidden-import gimpsam.backend \
-  --hidden-import gimpsam.sam3 \
-  --hidden-import gimpsam.plugin \
-  --hidden-import gimpsam.gimp_dirs \
-  --hidden-import gimpsam.compat \
-  --hidden-import gimpsam.job \
-  --hidden-import gimpsam.plan \
-  --hidden-import gimpsam.util \
-  --collect-submodules gimpsam \
-  --collect-all customtkinter \
-  --collect-submodules PIL \
-  --collect-submodules lazygimp.gui \
-  --collect-all PySide6.QtCore \
-  --collect-all PySide6.QtGui \
-  --collect-all PySide6.QtWidgets \
-  "${BUNDLE}/installer.py"
+  "$SPEC_FILE"
 
 # --- 3. source zip: the folder with everything needed to run ---------------
 (cd "$STAGE" && zip -qr "${DIST}/LazyGimp-Source.zip" lazygimp \

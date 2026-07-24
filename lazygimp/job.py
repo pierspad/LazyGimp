@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from .util import clean_output_line
+from .util import clean_output_line, clean_subprocess_env, urlopen
 from typing import Optional
 import os
 import queue
@@ -54,6 +54,7 @@ class Job:
             self.log("Cancelled — skipping: " + " ".join(display))
             return -1
         self.log("$ " + " ".join(display))
+        kw.setdefault("env", clean_subprocess_env())
         self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, **kw)
         buf = []
         while True:
@@ -88,6 +89,7 @@ class Job:
             self.log("Cancelled — skipping: " + " ".join(display))
             return -1, []
         self.log("$ " + " ".join(display))
+        kw.setdefault("env", clean_subprocess_env())
         self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, **kw)
         lines: list[str] = []
         buf = []
@@ -124,7 +126,7 @@ class Job:
         pty so an internal `sudo` can actually prompt (a plain subprocess has
         no controlling terminal at all). From a real terminal (CLI usage),
         sudo already has one — no pty tricks needed, just run it directly."""
-        env = env or os.environ.copy()
+        env = env or clean_subprocess_env()
         if os.geteuid() == 0:
             return self.run_cmd(cmd, env=env)
         prefix = ["sudo"] if shutil.which("sudo") else (["doas"] if shutil.which("doas") else None)
@@ -149,7 +151,7 @@ class Job:
         self.log(f"Downloading {url}")
         req = urllib.request.Request(url, headers=headers or {})
         try:
-            with urllib.request.urlopen(req) as resp, open(part, "wb") as out:
+            with urlopen(req) as resp, open(part, "wb") as out:
                 total = int(resp.headers.get("Content-Length", 0))
                 read = 0
                 last_pct = -1
