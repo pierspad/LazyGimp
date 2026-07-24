@@ -1,3 +1,9 @@
+## [2.2.2](https://github.com/pierspad/LazyGimp/compare/v2.2.1...v2.2.2) (2026-07-24)
+
+### 🐛 Bug Fixes
+
+* Appimage wasn't working properly ([ffbec4f](https://github.com/pierspad/LazyGimp/commit/ffbec4f4cdd875d8d63fc7a0b2b03d34e1b4750d))
+
 ## [2.2.1](https://github.com/pierspad/LazyGimp/compare/v2.2.0...v2.2.1) (2026-07-23)
 
 ### 🐛 Bug Fixes
