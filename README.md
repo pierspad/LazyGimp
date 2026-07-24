@@ -8,10 +8,9 @@ The latest stable GIMP, patched with [PhotoGIMP](https://github.com/Diolinux/Pho
 
 Lazy in LazyGimp stands as the [first virtue of the great programmer](https://thethreevirtues.com/).
 
-LazyGimp installs GIMP, applies the PhotoGIMP configuration, wires up G'MIC, Batcher and the Segment Anything Models. 
+You are not forced to install everything i recommended, you can selectively disable every component that you don't like/need and can always reuse the installer to add them later on.  
 
 In a nutshell, I aim to mantain this as an aggregator of all the best and most useful GIMP plugins,add-ons and config files.
-
 
 ## Install
 
