@@ -10,6 +10,7 @@ Lazy in LazyGimp stands as the [first virtue of the great programmer](https://th
 
 LazyGimp installs GIMP, applies the PhotoGIMP configuration, wires up G'MIC, Batcher and the Segment Anything Models. 
 
+In a nutshell, I aim to mantain this as an aggregator of all the best and most useful GIMP plugins,add-ons and config files.
 
 
 ## Install
