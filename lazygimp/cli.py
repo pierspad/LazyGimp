@@ -127,7 +127,7 @@ def cmd_sam_install(args) -> int:
             print(f"{key} already installed")
             continue
         if spec.family == "SAM3":
-            print("Use 'sam3 download --token ...' for SAM 3.1 (it's gated).", file=sys.stderr)
+            print("Use 'sam3 download --token ...' for SAM 3 (it's gated).", file=sys.stderr)
             ok = False
             continue
         if job.download(spec.url, model_path(spec), job.cancel_event):
@@ -208,12 +208,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p_sam_remove.add_argument("keys", nargs="+")
     p_sam_remove.set_defaults(func=cmd_sam_remove)
 
-    p_sam3 = sub.add_parser("sam3", help="SAM 3.1 (gated on Hugging Face)")
+    p_sam3 = sub.add_parser("sam3", help="SAM 3 (gated on Hugging Face)")
     sam3_sub = p_sam3.add_subparsers(dest="sam3_command", required=True)
-    p_sam3_dl = sam3_sub.add_parser("download", help="check access and download the SAM 3.1 checkpoint")
+    p_sam3_dl = sam3_sub.add_parser("download", help="check access and download the SAM 3 checkpoint")
     p_sam3_dl.add_argument("--token", required=True, help="Hugging Face read token")
     p_sam3_dl.set_defaults(func=cmd_sam3_download)
-    sam3_sub.add_parser("remove", help="delete the SAM 3.1 checkpoint").set_defaults(func=cmd_sam3_remove)
+    sam3_sub.add_parser("remove", help="delete the SAM 3 checkpoint").set_defaults(func=cmd_sam3_remove)
 
     sub.add_parser("fix-desktop", help="repair the PhotoGIMP taskbar/window-icon desktop entry "
                                         "without reinstalling").set_defaults(func=cmd_fix_desktop)

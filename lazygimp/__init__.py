@@ -13,7 +13,7 @@ One installer, GUI (Tkinter) and CLI, split into small modules:
     photogimp     the PhotoGIMP configuration layer
     plugins       plug-in folders (Batcher, seganyplugin)
     sam_backend   SAM venv + PyTorch backend
-    sam3          SAM 3.1 (gated on Hugging Face)
+    sam3          SAM 3 (gated on Hugging Face)
     gui           the Tkinter app (optional — needs python3-tk)
     cli           argparse commands + main()
 

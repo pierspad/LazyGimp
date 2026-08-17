@@ -13,7 +13,7 @@ import zipfile
 
 # ---------------------------------------------------------------------------
 # The gimpsam package (pierspad/GIMPSAM) is LazyGimp's single source of
-# truth for everything SAM: model registry, venv/PyTorch backend, SAM 3.1
+# truth for everything SAM: model registry, venv/PyTorch backend, SAM 3
 # gating, plug-in files. LazyGimp only aggregates it — nothing SAM is
 # implemented here anymore. Resolution order:
 #

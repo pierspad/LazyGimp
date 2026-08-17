@@ -913,7 +913,7 @@ class WizardPages:
             advance=False, shortcut_num="3")
 
     # ------------------------------------------------------------------
-    # SAM: PyTorch build selector + model families + SAM 3.1
+    # SAM: PyTorch build selector + model families + SAM 3
     # ------------------------------------------------------------------
 
     def _sam_setup_install_run(self):
@@ -964,7 +964,7 @@ class WizardPages:
     def _run_sam3_download(self, job: Job):
         token = self.hf_token_var.get().strip()
         if not token:
-            job.log("No Hugging Face token was entered — skipping SAM 3.1.")
+            job.log("No Hugging Face token was entered — skipping SAM 3.")
             return
         ok, tag = download_sam3(job, token)
         if not ok:
@@ -1236,7 +1236,7 @@ class WizardPages:
             "update_badges": update_header_badges,
         }
 
-    # -- SAM 3.1 (gated on Hugging Face) ---------------------------------
+    # -- SAM 3 (gated on Hugging Face) ---------------------------------
 
     def _wizard_render_sam3_dynamic(self) -> dict:
         spec = MODEL_BY_KEY["sam3"]

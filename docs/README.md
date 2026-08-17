@@ -58,8 +58,8 @@ LazyGimp-Installer-Linux [command] [options]
 | `sam list` | Lists every SAM checkpoint and whether it's installed |
 | `sam install <key>` | Downloads a specific checkpoint, e.g. `sam2_hiera_small` |
 | `sam remove <key>` | Deletes a checkpoint |
-| `sam3 download --token <hf_token>` | Downloads the gated SAM 3.1 weights from Hugging Face |
-| `sam3 remove` | Deletes the SAM 3.1 checkpoint |
+| `sam3 download --token <hf_token>` | Downloads the gated SAM 3 weights from Hugging Face |
+| `sam3 remove` | Deletes the SAM 3 checkpoint |
 
 `--method package-manager` / `--method flatpak` forces how `gimp` gets installed (default: auto-detected). `--ephemeral` self-deletes the binary once the GUI closes.
 
@@ -69,7 +69,7 @@ LazyGimp-Installer-Linux [command] [options]
 - **PhotoGIMP** — Photoshop-like shortcuts, tool layout, dark theme, single-window mode. Your existing GIMP config is backed up first and can be restored by removing the component.
 - **G'MIC** — 500+ image-processing filters.
 - **Batcher** — batch conversion and exporting layers as individual files.
-- **SAM (Segment Anything)** — AI-assisted subject selection (SAM1, SAM2, SAM 3.1), with an isolated Python virtualenv and GPU-accelerated PyTorch set up automatically. The plug-in, model registry and backend all come from [GIMPSAM](https://github.com/pierspad/GIMPSAM), which LazyGimp pulls in as its single source of truth for everything SAM.
+- **SAM (Segment Anything)** — AI-assisted subject selection (SAM1, SAM2, SAM 3), with an isolated Python virtualenv and GPU-accelerated PyTorch set up automatically. The plug-in, model registry and backend all come from [GIMPSAM](https://github.com/pierspad/GIMPSAM), which LazyGimp pulls in as its single source of truth for everything SAM.
 
 ## Troubleshooting
 

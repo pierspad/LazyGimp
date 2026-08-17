@@ -1,4 +1,4 @@
-"""Thin re-export — SAM 3.1 handling (HF gating, checkpoint download)
+"""Thin re-export — SAM 3 handling (HF gating, checkpoint download)
 lives in the gimpsam package (pierspad/GIMPSAM, resolved from its latest release by gimpsam_dep);
 LazyGimp only aggregates it. Import surface kept identical so every
 existing call site still works."""

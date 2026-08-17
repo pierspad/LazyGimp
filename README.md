@@ -54,8 +54,8 @@ LazyGimp-Installer-Linux [command] [options]
 | `sam list` | Lists every SAM checkpoint and whether it's installed |
 | `sam install <key>` | Downloads a specific checkpoint, e.g. `sam2_hiera_small` |
 | `sam remove <key>` | Deletes a checkpoint |
-| `sam3 download --token <hf_token>` | Downloads the gated SAM 3.1 weights from Hugging Face |
-| `sam3 remove` | Deletes the SAM 3.1 checkpoint |
+| `sam3 download --token <hf_token>` | Downloads the gated SAM 3 weights from Hugging Face |
+| `sam3 remove` | Deletes the SAM 3 checkpoint |
 
 `--method package-manager` / `--method flatpak` forces how `gimp` gets installed (default: auto-detected). `--ephemeral` self-deletes the binary once the GUI closes.
 
