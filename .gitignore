@@ -14,3 +14,13 @@ __pycache__/
 .DS_Store
 
 LazyGimp-Installer-Linux
+.directory
+
+# Upstream clones kept for reference, not part of this repo. Half a
+# gigabyte of other people's git history has no business being committed
+# here — but the README explaining what belongs in that folder, and how to
+# recreate it, does. Ignoring the CONTENTS rather than the directory is
+# what makes that exception possible: git cannot re-include a file whose
+# parent directory is itself excluded.
+GITHUB_FOLDERS_OF_LAZYGIMP_COMPONENTS/*
+!GITHUB_FOLDERS_OF_LAZYGIMP_COMPONENTS/README.md
