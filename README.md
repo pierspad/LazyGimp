@@ -1,6 +1,6 @@
 # LazyGimp
 
-The latest stable GIMP, patched with [PhotoGIMP](https://github.com/Diolinux/PhotoGIMP), [G'MIC](https://gmic.eu), [Batcher](https://github.com/kamilburda/batcher) and [Segment Anything](https://github.com/pierspad/GIMPSAM) — in one command.
+The latest stable GIMP with the addition of [PhotoGIMP](https://github.com/Diolinux/PhotoGIMP), [G'MIC](https://gmic.eu), [Batcher](https://github.com/kamilburda/batcher) and [GIMPSAM](https://github.com/pierspad/GIMPSAM) — in one command.
 
 [![CI](https://github.com/pierspad/LazyGimp/actions/workflows/ci.yml/badge.svg)](https://github.com/pierspad/LazyGimp/actions/workflows/ci.yml)
 [![Release](https://github.com/pierspad/LazyGimp/actions/workflows/release.yml/badge.svg)](https://github.com/pierspad/LazyGimp/actions/workflows/release.yml)
