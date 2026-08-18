@@ -1,3 +1,13 @@
+## [2.2.3](https://github.com/pierspad/LazyGimp/compare/v2.2.2...v2.2.3) (2026-08-18)
+
+### 🐛 Bug Fixes
+
+* **windows:** hand PyInstaller native paths, not MSYS ones, so the exe builds ([f56ac13](https://github.com/pierspad/LazyGimp/commit/f56ac130b9b102036175264b2ce7a86dbc3ec559))
+
+### 📚 Documentation
+
+* the SAM 3 checkpoint is facebook/sam3, not 3.1 ([2e7bf11](https://github.com/pierspad/LazyGimp/commit/2e7bf118aeb2ff6387f2ea8e093ef92e23089dbe))
+
 ## [2.2.2](https://github.com/pierspad/LazyGimp/compare/v2.2.1...v2.2.2) (2026-07-24)
 
 ### 🐛 Bug Fixes
