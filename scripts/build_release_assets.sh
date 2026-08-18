@@ -75,6 +75,23 @@ DIST="${ROOT}/dist"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
 
+# PyInstaller is a native Windows program, but on the Windows runner this
+# script runs under Git Bash, where every path is an MSYS one: mktemp -d
+# hands back /tmp/tmp.XXXX, and a native program resolves that as
+# \tmp\tmp.XXXX — a directory that exists on no drive. Writing such a path
+# into the generated spec is what made the Windows job fail with
+#     ERROR: script '\tmp\tmp.Tui0Izl0i5\lazygimp\installer.py' not found
+# while Linux, where the same string is already a real path, was fine.
+# cygpath ships with Git Bash and is absent everywhere else, so on Linux
+# and macOS this is the identity function and nothing changes.
+to_native() {
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -w "$1"
+  else
+    printf '%s' "$1"
+  fi
+}
+
 rm -rf "$DIST"
 mkdir -p "$DIST"
 
@@ -189,6 +206,9 @@ fi
 SPEC_DIR="${STAGE}/pyi-spec"
 mkdir -p "$SPEC_DIR"
 SPEC_FILE="${SPEC_DIR}/lazygimp.spec"
+# Every path baked into the spec, or handed to pyinstaller on the command
+# line, has to be one the native interpreter can open — see to_native().
+BUNDLE_NATIVE="$(to_native "$BUNDLE")"
 cat >"$SPEC_FILE" <<EOF
 # -*- mode: python ; coding: utf-8 -*-
 import os
@@ -215,8 +235,8 @@ for pkg in ("customtkinter", "PySide6.QtCore", "PySide6.QtGui", "PySide6.QtWidge
 binaries = [b for b in binaries if "libfontconfig" not in os.path.basename(b[0]).lower()]
 
 a = Analysis(
-    [r"${BUNDLE}/installer.py"],
-    pathex=[r"${BUNDLE}"],
+    [r"${BUNDLE_NATIVE}/installer.py"],
+    pathex=[r"${BUNDLE_NATIVE}"],
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
@@ -230,9 +250,9 @@ exe = EXE(
 EOF
 
 [[ "$STAGE_ONLY" == "1" ]] || pyinstaller --clean --noconfirm \
-  --distpath "$DIST" \
-  --workpath "${STAGE}/pyi-build" \
-  "$SPEC_FILE"
+  --distpath "$(to_native "$DIST")" \
+  --workpath "$(to_native "${STAGE}/pyi-build")" \
+  "$(to_native "$SPEC_FILE")"
 
 # --- 3. source zip: the folder with everything needed to run ---------------
 # Prune the caches from the staging copy instead of excluding them at
