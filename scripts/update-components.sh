@@ -19,15 +19,12 @@ set -uo pipefail
 
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 ROOT="$(dirname "$HERE")"
-COMPONENTS_DIR="${ROOT}/GITHUB_FOLDERS_OF_LAZYGIMP_COMPONENTS"
+# shellcheck source=lib/components.sh
+source "${HERE}/lib/components.sh"
 
-if [[ ! -d "$COMPONENTS_DIR" ]]; then
-  echo "[FAIL] no component clones at ${COMPONENTS_DIR}" >&2
-  echo "       clone them first, e.g.:" >&2
-  echo "       git clone https://github.com/kamilburda/batcher.git \\" >&2
-  echo "                 \"${COMPONENTS_DIR}/batcher\"" >&2
-  exit 1
-fi
+COMPONENTS_DIR="$(resolve_components_dir "$ROOT")" || exit 1
+echo "componenti in: ${COMPONENTS_DIR}"
+echo
 
 changed=0
 current=0
@@ -37,7 +34,12 @@ failed=0
 for repo in "$COMPONENTS_DIR"/*/; do
   name="$(basename "$repo")"
   if [[ ! -d "${repo}.git" ]]; then
-    echo "[skip] ${name}: not a git clone"
+    continue  # not a clone (assets, notes, the odd loose file)
+  fi
+
+  # Under the sibling layout this loop walks past LazyGimp itself.
+  if is_self "$repo" "$ROOT"; then
+    echo "[self] ${name}: this checkout — never synced from its own script"
     ((skipped++))
     continue
   fi
@@ -62,11 +64,26 @@ for repo in "$COMPONENTS_DIR"/*/; do
     ((failed++))
     continue
   fi
+  # A fork's origin carries neither upstream's commits nor its release
+  # tags, so without this the release check below would report every
+  # upstream tag as missing on a perfectly healthy fork.
+  if git -C "$repo" remote get-url upstream >/dev/null 2>&1; then
+    git -C "$repo" fetch --quiet --tags upstream 2>/dev/null || true
+  fi
+
+  # A branch that exists only locally — a feature branch mid-work — has
+  # nothing to sync and is not an error. Reporting it as one trains people
+  # to ignore the script's failures, which is worse than not checking.
+  if ! git -C "$repo" rev-parse --verify --quiet "refs/remotes/origin/${branch}" >/dev/null; then
+    echo "[skip] ${name}: on local-only branch '${branch}' — nothing to sync"
+    ((skipped++))
+    continue
+  fi
 
   # --ff-only: if upstream force-pushed or the local branch diverged, stop
   # and say so rather than merging or rewriting anything.
   if ! git -C "$repo" merge --quiet --ff-only "origin/${branch}" 2>/dev/null; then
-    echo "[FAIL] ${name}: cannot fast-forward ${branch} — diverged from origin"
+    echo "[FAIL] ${name}: ${branch} has diverged from origin — resolve by hand"
     ((failed++))
     continue
   fi

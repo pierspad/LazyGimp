@@ -20,7 +20,10 @@ set -uo pipefail
 
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 ROOT="$(dirname "$HERE")"
-COMPONENTS_DIR="${ROOT}/GITHUB_FOLDERS_OF_LAZYGIMP_COMPONENTS"
+# shellcheck source=lib/components.sh
+source "${HERE}/lib/components.sh"
+
+COMPONENTS_DIR="$(resolve_components_dir "$ROOT")" || exit 1
 
 # repo|local clone dir|how LazyGimp consumes it
 COMPONENTS=(
@@ -39,6 +42,8 @@ api() {
   fi
 }
 
+echo "componenti in: ${COMPONENTS_DIR}"
+echo
 printf "%-22s %-16s %-12s %s\n" "COMPONENT" "LATEST RELEASE" "PUBLISHED" "LOCAL CLONE"
 printf "%-22s %-16s %-12s %s\n" "---------" "--------------" "---------" "-----------"
 
@@ -54,14 +59,21 @@ for entry in "${COMPONENTS[@]}"; do
   clone="${COMPONENTS_DIR}/${dir}"
   if [[ -d "${clone}/.git" ]]; then
     head_date="$(git -C "$clone" log -1 --format=%cs 2>/dev/null)"
+    fork=""
+    # When the clone is a fork, origin is the fork and upstream is the
+    # project releases are cut from — say so, because "your HEAD is behind"
+    # means something different there.
+    if git -C "$clone" remote get-url upstream >/dev/null 2>&1; then
+      fork=" (fork)"
+    fi
     # Is the released tag actually present in the clone? If not, the clone
     # predates the release and wants an update-components.sh run.
     if [[ "$tag" != "(none/unreachable)" ]] \
        && ! git -C "$clone" rev-parse --verify --quiet "refs/tags/${tag}" >/dev/null; then
-      local_state="HEAD ${head_date} — TAG ${tag} MANCANTE, aggiorna"
+      local_state="HEAD ${head_date}${fork} — TAG ${tag} MANCANTE, aggiorna"
       ((stale++))
     else
-      local_state="HEAD ${head_date}"
+      local_state="HEAD ${head_date}${fork}"
     fi
   else
     local_state="non clonato"
