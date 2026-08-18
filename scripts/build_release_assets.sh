@@ -235,8 +235,19 @@ EOF
   "$SPEC_FILE"
 
 # --- 3. source zip: the folder with everything needed to run ---------------
-(cd "$STAGE" && zip -qr "${DIST}/LazyGimp-Source.zip" lazygimp \
-  -x 'lazygimp/lazygimp/__pycache__/*')
+# Prune the caches from the staging copy instead of excluding them at
+# archive time. That leaves the archive step with no need for exclusion
+# patterns, which in turn lets it fall back to Python's zipfile when the
+# `zip` binary is missing — as it is on a stock Arch install, where the
+# pre-push staging dry-run then failed for a reason that had nothing to do
+# with the code being pushed. CI still takes the `zip` path.
+find "${STAGE}/lazygimp" -type d -name __pycache__ -prune -exec rm -rf {} +
+
+if command -v zip >/dev/null 2>&1; then
+  (cd "$STAGE" && zip -qr "${DIST}/LazyGimp-Source.zip" lazygimp)
+else
+  (cd "$STAGE" && python3 -m zipfile -c "${DIST}/LazyGimp-Source.zip" lazygimp)
+fi
 
 (cd "$DIST" && sha256sum -- * >checksums.txt)
 
